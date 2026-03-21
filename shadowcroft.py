@@ -574,6 +574,75 @@ class Enemy:
 
 
 # ═══════════════════════════════════════════════════════════════
+#  CLASSE: Projectile  —  projétil disparado por inimigos
+# ═══════════════════════════════════════════════════════════════
+class Projectile:
+    def __init__(self, x: float, y: float, vx: float, vy: float):
+        self.rect = pygame.Rect(x - 6, y - 6, 12, 12)
+        self.vx = vx
+        self.vy = vy
+        self.alive = True
+        self.timer = 0
+
+    def update(self, player, platforms):
+        self.timer += 1
+        self.rect.x += int(self.vx)
+        self.rect.y += int(self.vy)
+
+        if self.rect.colliderect(player.rect):
+            player.take_damage(1, self.rect.centerx)
+            self.alive = False
+
+        for p in platforms:
+            if self.rect.colliderect(p.rect):
+                self.alive = False
+
+        # Timeout
+        if self.timer > 180:
+            self.alive = False
+
+    def draw(self, surface, cam_x: int, cam_y: int):
+        rx = self.rect.x - cam_x
+        ry = self.rect.y - cam_y
+        draw_circle_alpha(surface, C_E_EYE, (rx + 6, ry + 6), 8, 180)
+        pygame.draw.circle(surface, C_WHITE, (rx + 6, ry + 6), 4)
+
+
+# ═══════════════════════════════════════════════════════════════
+#  CLASSE: ShootingEnemy  —  inimigo que atira
+# ═══════════════════════════════════════════════════════════════
+class ShootingEnemy(Enemy):
+    def __init__(self, x: int, y: int, patrol_range: int = 100, max_hp: int = 2):
+        super().__init__(x, y, patrol_range, max_hp)
+        self.shoot_cd = 0
+
+    def update(self, platforms, player_rect, projectiles):
+        super().update(platforms, player_rect)
+        self.shoot_cd = max(0, self.shoot_cd - 1)
+
+        dx = player_rect.centerx - self.rect.centerx
+        dy = player_rect.centery - self.rect.centery
+        dist = math.sqrt(dx**2 + dy**2)
+
+        if dist < 400 and self.shoot_cd == 0 and self.state != self.DEAD:
+            # Atira
+            angle = math.atan2(dy, dx)
+            pvx = math.cos(angle) * 7
+            pvy = math.sin(angle) * 7
+            projectiles.append(Projectile(self.rect.centerx, self.rect.centery, pvx, pvy))
+            self.shoot_cd = 100
+
+    def draw(self, surface, cam_x, cam_y):
+        super().draw(surface, cam_x, cam_y)
+        if self.state == self.DEAD and self.dead_timer > 10: return
+        # Diferencia visualmente (cor roxa no olho ou algo assim)
+        rx = self.rect.x - cam_x
+        ry = self.rect.y - cam_y
+        bob = int(math.sin(self.bob_timer * 0.08) * 1.5)
+        pygame.draw.circle(surface, (150, 50, 255), (rx + self.rect.w//2 + self.facing*4, ry + bob + 7), 2)
+
+
+# ═══════════════════════════════════════════════════════════════
 #  CLASSE: Player  —  personagem principal
 # ═══════════════════════════════════════════════════════════════
 class Player:
@@ -1001,6 +1070,25 @@ class Camera:
 
 
 # ═══════════════════════════════════════════════════════════════
+#  CLASSE: LevelGoal  —  objetivo final da fase
+# ═══════════════════════════════════════════════════════════════
+class LevelGoal:
+    def __init__(self, x, y):
+        self.rect = pygame.Rect(x, y, 60, 80)
+        self.timer = 0
+
+    def update(self, player):
+        self.timer += 1
+        return self.rect.colliderect(player.rect)
+
+    def draw(self, surface, cam_x, cam_y):
+        rx, ry = self.rect.x - cam_x, self.rect.y - cam_y
+        glow = int(120 + 40 * math.sin(self.timer * 0.1))
+        draw_circle_alpha(surface, C_CHK_GLOW, (rx + 30, ry + 40), 40, glow // 2)
+        pygame.draw.rect(surface, C_CHK_ON, (rx + 10, ry + 10, 40, 60), 3, border_radius=5)
+
+
+# ═══════════════════════════════════════════════════════════════
 #  CLASSE: HUD  —  interface do jogador (vida, etc.)
 # ═══════════════════════════════════════════════════════════════
 class HUD:
@@ -1095,108 +1183,108 @@ class HUD:
         sub = font_sub.render("Pressione qualquer tecla para começar", True, C_UI_TEXT)
         surface.blit(sub, (SCREEN_W // 2 - sub.get_width() // 2, SCREEN_H // 2 + 30))
 
-        hint = font_sub.render("A D Mover   |   W/Space Pular   |   M1 Atacar", True,
+        hint = font_sub.render("Pressione qualquer tecla para continuar", True,
                                 (130, 120, 170))
         surface.blit(hint, (SCREEN_W // 2 - hint.get_width() // 2, SCREEN_H // 2 + 70))
+
+    def draw_level_select(self, surface, unlocked, souls, health_upgrades):
+        """Menu de seleção de fases e dificuldade."""
+        draw_gradient_bg(surface, C_BG_TOP, C_BG_BOT, (0, 0, SCREEN_W, SCREEN_H))
+        font_title = pygame.font.SysFont("consolas", 48, bold=True)
+        font_md = pygame.font.SysFont("consolas", 24)
+
+        title = font_title.render("SELEÇÃO DE FASES", True, C_UI_TITLE)
+        surface.blit(title, (SCREEN_W // 2 - title.get_width() // 2, 100))
+
+        for i in range(1, 6):
+            color = C_UI_TEXT if i <= unlocked else (100, 100, 100)
+            status = "" if i <= unlocked else " [BLOQUEADO]"
+            txt = font_md.render(f"Pressione {i} - Level {i}{status}", True, color)
+            surface.blit(txt, (SCREEN_W // 2 - 150, 180 + i * 45))
+
+        souls_txt = font_md.render(f"Suas Almas: {souls}", True, C_WHITE)
+        surface.blit(souls_txt, (SCREEN_W // 2 - souls_txt.get_width() // 2, 450))
+
+        cost = 30 + health_upgrades * 20
+        upg_txt = font_md.render(f"[U] Upgrade de Vida (Custo: {cost}) - Atual: +{health_upgrades} HP", True, (255, 200, 100))
+        surface.blit(upg_txt, (SCREEN_W // 2 - upg_txt.get_width() // 2, 500))
+
+        diff_txt = font_md.render("Dificuldade: [E] Fácil | [N] Normal | [H] Difícil", True, C_SOUL_A)
+        surface.blit(diff_txt, (SCREEN_W // 2 - diff_txt.get_width() // 2, 560))
+
+        hint = font_md.render("A D Mover | W Pular | M1 Atacar", True, (130, 120, 170))
+        surface.blit(hint, (SCREEN_W // 2 - hint.get_width() // 2, 630))
 
 
 # ═══════════════════════════════════════════════════════════════
 #  FUNÇÃO: build_level  —  constrói o mapa da fase
 # ═══════════════════════════════════════════════════════════════
-def build_level():
+def build_level(level_id=1, difficulty=1.0):
     """
     Cria as plataformas, inimigos e checkpoints da fase.
-    Retorna (platforms, enemies, checkpoints, world_w, world_h).
+    Retorna (platforms, enemies, checkpoints, orbs, goal, world_w, world_h).
     """
     platforms: List[Platform]   = []
     enemies:   List[Enemy]      = []
     checkpoints: List[Checkpoint] = []
+    orbs: List[HealthOrb] = []
 
-    # ── Chão principal ─────────────────────────────────────────
-    # Seção 1: Começo — terreno plano
-    platforms.append(Platform(0,   580, 600, 40, variant=0))
-    platforms.append(Platform(650, 580, 400, 40, variant=1))  # Gap pequeno
-
-    # Seção 2: Escalada (plataformas em escada)
-    platforms.append(Platform(1100, 540, 180, 30, variant=0))
-    platforms.append(Platform(1320, 480, 200, 30, variant=2))
-    platforms.append(Platform(1560, 420, 180, 30, variant=1))
-
-    # Seção 3: Planalto intermediário
-    platforms.append(Platform(1780, 380, 500, 35, variant=0))
-    platforms.append(Platform(2340, 380, 60,  35, variant=2))  # Pequena pedra
-
-    # Seção 4: Descida e caverna
-    platforms.append(Platform(2450, 440, 350, 35, variant=1))
-    platforms.append(Platform(2850, 480, 200, 35, variant=0))
-    platforms.append(Platform(3100, 540, 500, 40, variant=2))
-
-    # Seção 5: Área final — boss room feel
-    platforms.append(Platform(3650, 540, 800, 40, variant=0))
-    platforms.append(Platform(3650, 480, 120, 30, variant=1))
-    platforms.append(Platform(4100, 480, 120, 30, variant=1))
-
-    # ── Plataformas flutuantes ──────────────────────────────────
-    # Seção 1
-    platforms.append(Platform(340, 490, 120, 24, variant=2))
-    platforms.append(Platform(500, 430, 100, 24, variant=2))
-    # Seção 2
-    platforms.append(Platform(1200, 600, 80,  24, variant=0))
-    # Seção 3
-    platforms.append(Platform(1900, 290, 140, 24, variant=1))
-    platforms.append(Platform(2100, 230, 120, 24, variant=2))
-    platforms.append(Platform(2260, 290, 100, 24, variant=0))
-    # Seção 4
-    platforms.append(Platform(2550, 360, 100, 24, variant=1))
-    platforms.append(Platform(2680, 300, 120, 24, variant=2))
-    platforms.append(Platform(2820, 370, 80,  24, variant=0))
-
-    # ── Paredes / bordas do mapa ────────────────────────────────
-    # Borda esquerda
-    platforms.append(Platform(-40,   0, 40, 800, variant=0))
-    # Borda direita
-    platforms.append(Platform(4460, 0, 40, 800, variant=0))
-    # Abismo (chão fora do mapa = morte por queda)
-
-    # ── Inimigos ────────────────────────────────────────────────
-    # Seção 1
-    enemies.append(Enemy(350, 540, patrol_range=100, max_hp=3))
-    enemies.append(Enemy(700, 540, patrol_range=120, max_hp=3))
-
-    # Seção 2 — plataformas
-    enemies.append(Enemy(1150, 500, patrol_range=60, max_hp=4))
-    enemies.append(Enemy(1380, 440, patrol_range=80, max_hp=4))
-    enemies.append(Enemy(1600, 380, patrol_range=70, max_hp=4))
-
-    # Seção 3 — planalto
-    enemies.append(Enemy(1900, 340, patrol_range=150, max_hp=5))
-    enemies.append(Enemy(2050, 340, patrol_range=150, max_hp=5))
-
-    # Seção 4
-    enemies.append(Enemy(2550, 400, patrol_range=100, max_hp=5))
-    enemies.append(Enemy(2900, 440, patrol_range=80,  max_hp=4))
-    enemies.append(Enemy(3150, 500, patrol_range=120, max_hp=5))
-
-    # Seção 5 — boss room
-    enemies.append(Enemy(3750, 500, patrol_range=200, max_hp=7))
-    enemies.append(Enemy(4000, 500, patrol_range=200, max_hp=7))
-    enemies.append(Enemy(4200, 500, patrol_range=180, max_hp=7))
-
-    # ── Checkpoints ─────────────────────────────────────────────
-    checkpoints.append(Checkpoint(860, 532))   # Após o primeiro gap
-    checkpoints.append(Checkpoint(1800, 332))  # Topo da escalada
-    checkpoints.append(Checkpoint(3250, 492))  # Antes da área final
-
-    # ── Health Orbs ─────────────────────────────────────────────
-    orbs = []
-    orbs.append(HealthOrb(500, 400))
-    orbs.append(HealthOrb(2100, 200))
-    orbs.append(HealthOrb(3650, 450))
-
-    world_w = 4500
+    world_w = 2000 + level_id * 1000
     world_h = 900
 
-    return platforms, enemies, checkpoints, orbs, world_w, world_h
+    # Chão base
+    platforms.append(Platform(0, 600, world_w, 40))
+
+    # Paredes
+    platforms.append(Platform(-40, 0, 40, world_h))
+    platforms.append(Platform(world_w, 0, 40, world_h))
+
+    if level_id == 1:
+        # Level 1: Simples
+        for i in range(3):
+            platforms.append(Platform(400 + i*400, 500 - i*50, 200, 30))
+            enemies.append(Enemy(500 + i*400, 450 - i*50, max_hp=int(3*difficulty)))
+        orbs.append(HealthOrb(1200, 300))
+        goal = LevelGoal(world_w - 100, 520)
+
+    elif level_id == 2:
+        # Level 2: Mais saltos e ShootingEnemies
+        for i in range(5):
+            platforms.append(Platform(300 + i*500, 550 - (i%2)*100, 150, 30))
+            if i % 2 == 0:
+                enemies.append(ShootingEnemy(350 + i*500, 500 - (i%2)*100, max_hp=int(2*difficulty)))
+        goal = LevelGoal(world_w - 100, 520)
+
+    elif level_id == 3:
+        # Level 3: Verticalidade
+        for i in range(8):
+            platforms.append(Platform(200 + i*400, 600 - i*40, 120, 25))
+            enemies.append(Enemy(250 + i*400, 550 - i*40, max_hp=int(4*difficulty)))
+        goal = LevelGoal(world_w - 100, 200)
+
+    elif level_id == 4:
+        # Level 4: Muitos inimigos
+        for i in range(10):
+            platforms.append(Platform(i*400, 580, 300, 40))
+            if i > 0:
+                enemies.append(Enemy(i*400 + 100, 530, max_hp=int(5*difficulty)))
+                enemies.append(ShootingEnemy(i*400 + 200, 400, max_hp=int(3*difficulty)))
+        goal = LevelGoal(world_w - 100, 500)
+
+    else:
+        # Level 5: Desafio final
+        platforms.append(Platform(100, 500, 200, 40))
+        for i in range(15):
+            px = 400 + i * 300
+            py = 500 + math.sin(i) * 150
+            platforms.append(Platform(px, py, 150, 30))
+            if i % 2 == 0:
+                enemies.append(ShootingEnemy(px + 50, py - 50, max_hp=int(5*difficulty)))
+            else:
+                enemies.append(Enemy(px + 50, py - 50, max_hp=int(8*difficulty)))
+        goal = LevelGoal(world_w - 100, 500)
+
+    return platforms, enemies, checkpoints, orbs, goal, world_w, world_h
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1214,17 +1302,24 @@ class Game:
     STATE_START   = "start"
     STATE_PLAYING = "playing"
     STATE_DEAD    = "dead"
+    STATE_LEVEL_SELECT = "level_select"
 
     def __init__(self):
         self.state = self.STATE_START
+        self.current_level = 1
+        self.unlocked_levels = 1
+        self.difficulty = 1.0  # 0.5 Easy, 1.0 Normal, 1.5 Hard
+        self.souls = 0
+        self.health_upgrades = 0
         self._init_game()
         self.hud = HUD()
         self.bg_surface = self._create_bg_surface()
 
     def _init_game(self):
         """(Re)inicializa todos os objetos do jogo."""
-        self.platforms, self.enemies, self.checkpoints, self.orbs, self.world_w, self.world_h = build_level()
-        self.player = Player(80, 520)
+        self.platforms, self.enemies, self.checkpoints, self.orbs, self.goal, self.world_w, self.world_h = build_level(self.current_level, self.difficulty)
+        self.player = Player(80, 520, max_hp=5 + self.health_upgrades)
+        self.projectiles = []
         self.camera = Camera(self.world_w, self.world_h)
         self.camera.x = 0
         self.camera.y = 0
@@ -1254,6 +1349,9 @@ class Game:
         if self.state == self.STATE_START:
             return
 
+        if self.state == self.STATE_LEVEL_SELECT:
+            return
+
         if self.state == self.STATE_DEAD:
             if keys[pygame.K_r]:
                 self.player.respawn()
@@ -1272,6 +1370,18 @@ class Game:
         self.player.move_and_collide(self.platforms)
         self.player.update(self.platforms, self.checkpoints, self.enemies)
 
+        # Projectiles
+        for p in self.projectiles:
+            p.update(self.player, self.platforms)
+        self.projectiles = [p for p in self.projectiles if p.alive]
+
+        # Goal
+        if self.goal.update(self.player):
+            if self.current_level < 5:
+                self.unlocked_levels = max(self.unlocked_levels, self.current_level + 1)
+                self.state = self.STATE_LEVEL_SELECT
+                self.hud.show_message(f"Level {self.current_level} Completo!", 120)
+
         # Morreu ao cair no abismo
         if self.player.rect.top > self.world_h + 100 and not self.player.is_dead:
             self.player._die()
@@ -1281,7 +1391,10 @@ class Game:
 
         # Atualiza inimigos
         for e in self.enemies:
-            e.update(self.platforms, self.player.rect)
+            if isinstance(e, ShootingEnemy):
+                e.update(self.platforms, self.player.rect, self.projectiles)
+            else:
+                e.update(self.platforms, self.player.rect)
 
         # Dano dos ataques do player nos inimigos
         if self.player.is_attacking and self.player.attack_rect.width > 0:
@@ -1299,7 +1412,8 @@ class Game:
         # Health Orbs
         for orb in self.orbs:
             if orb.update(self.player):
-                self.hud.show_message("Vida restaurada!", 60)
+                self.souls += 10
+                self.hud.show_message("Vida restaurada! +10 Almas", 60)
         self.orbs = [o for o in self.orbs if not o.collected]
 
         # Câmera
@@ -1316,6 +1430,11 @@ class Game:
         # Tela de início
         if self.state == self.STATE_START:
             self.hud.draw_start_screen(screen)
+            pygame.display.flip()
+            return
+
+        if self.state == self.STATE_LEVEL_SELECT:
+            self.hud.draw_level_select(screen, self.unlocked_levels, self.souls, self.health_upgrades)
             pygame.display.flip()
             return
 
@@ -1339,6 +1458,9 @@ class Game:
         for p in self.platforms:
             p.draw(screen, cam_x, cam_y)
 
+        # Goal
+        self.goal.draw(screen, cam_x, cam_y)
+
         # Checkpoints
         for chk in self.checkpoints:
             chk.draw(screen, cam_x, cam_y)
@@ -1350,6 +1472,10 @@ class Game:
         # Inimigos
         for e in self.enemies:
             e.draw(screen, cam_x, cam_y)
+
+        # Projectiles
+        for p in self.projectiles:
+            p.draw(screen, cam_x, cam_y)
 
         # Hitbox de ataque (debug opcional — comente para ocultar)
         # if self.player.is_attacking:
@@ -1391,10 +1517,40 @@ class Game:
                     running = False
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
-                        running = False
-                    # Sai da tela de início
+                        if self.state == self.STATE_PLAYING:
+                            self.state = self.STATE_LEVEL_SELECT
+                        else:
+                            running = False
+
                     if self.state == self.STATE_START:
-                        self.state = self.STATE_PLAYING
+                        self.state = self.STATE_LEVEL_SELECT
+
+                    elif self.state == self.STATE_LEVEL_SELECT:
+                        if pygame.K_1 <= event.key <= pygame.K_5:
+                            lv = event.key - pygame.K_1 + 1
+                            if lv <= self.unlocked_levels:
+                                self.current_level = lv
+                                self._init_game()
+                                self.state = self.STATE_PLAYING
+                        if event.key == pygame.K_e:
+                            self.difficulty = 0.5
+                            self.hud.show_message("Dificuldade: Fácil", 60)
+                        if event.key == pygame.K_n:
+                            self.difficulty = 1.0
+                            self.hud.show_message("Dificuldade: Normal", 60)
+                        if event.key == pygame.K_h:
+                            self.difficulty = 1.5
+                            self.hud.show_message("Dificuldade: Difícil", 60)
+                        if event.key == pygame.K_u:
+                            cost = 30 + self.health_upgrades * 20
+                            if self.souls >= cost:
+                                self.souls -= cost
+                                self.health_upgrades += 1
+                                self.player.max_hp += 1
+                                self.player.hp = self.player.max_hp
+                                self.hud.show_message(f"Upgrade! Max HP: {self.player.max_hp}", 80)
+                            else:
+                                self.hud.show_message(f"Almas insuficientes ({cost})", 60)
 
             self.update()
             self.draw()
