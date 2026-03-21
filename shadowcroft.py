@@ -851,9 +851,17 @@ class Player:
 
         # Vertical
         prev_on_ground = self.on_ground
-        self.on_ground = False
         self.rect.y += int(self.vy)
         self._collide_y(platforms)
+
+        # Ground detection extra para garantir pulo estável
+        ground_rect = pygame.Rect(self.rect.x, self.rect.bottom, self.rect.w, 2)
+        for p in platforms:
+            if ground_rect.colliderect(p.rect) and self.vy >= 0:
+                self.on_ground = True
+                self.rect.bottom = p.rect.top
+                self.vy = 0
+                break
 
         # Coyote time: mantém alguns frames de pulo após sair de borda
         if prev_on_ground and not self.on_ground and self.vy > 0:
@@ -881,6 +889,7 @@ class Player:
                 self.vx = 0
 
     def _collide_y(self, platforms: List[Platform]):
+        self.on_ground = False
         for p in platforms:
             if self.rect.colliderect(p.rect):
                 if self.vy > 0:
@@ -1209,8 +1218,9 @@ class MovingPlatform:
         self.rect.y = int(new_y)
 
         # Se o player estiver em cima, move ele junto
-        foot_rect = pygame.Rect(player.rect.x, player.rect.bottom, player.rect.w, 2)
-        if foot_rect.colliderect(self.rect) and player.vy >= 0:
+        # Aumentamos a margem de detecção para 4px para garantir o snap em descidas
+        foot_rect = pygame.Rect(player.rect.x, player.rect.bottom, player.rect.w, 4)
+        if foot_rect.colliderect(self.rect) and player.vy >= -1:
             player.rect.x += int(vx)
             player.rect.y = self.rect.top - player.rect.h
             player.on_ground = True
@@ -1429,37 +1439,38 @@ def build_level(level_id=1, difficulty=1.0):
         # Level 3: Puzzle e Combate Ranged
         switches.append(Switch(450, 550))
         gates.append(Gate(700, 250, 40, 400))
-        platforms.append(Platform(400, 380, 200, 30))
-        enemies.append(ShootingEnemy(450, 320, max_hp=int(3*difficulty)))
-        m_platforms.append(MovingPlatform(800, 450, 150, 25, 200, 0))
-        platforms.append(Platform(1150, 350, 200, 30, hazard=True))
-        orbs.append(HealthOrb(1250, 280))
-        platforms.append(Platform(1500, 550, world_w - 1500, 40))
-        goal = LevelGoal(world_w - 120, 470)
+        platforms.append(Platform(400, 350, 200, 30)) # Mais alto
+        enemies.append(ShootingEnemy(450, 300, max_hp=int(3*difficulty)))
+        m_platforms.append(MovingPlatform(850, 450, 150, 25, 300, 0)) # Curso maior
+        platforms.append(Platform(1250, 350, 200, 30, hazard=True))
+        orbs.append(HealthOrb(1350, 280))
+        platforms.append(Platform(1600, 550, world_w - 1600, 40))
+        goal = LevelGoal(world_w - 120, 500)
 
     elif level_id == 4:
         # Level 4: "Ascensão" (Desafio de pulo)
-        for i in range(12):
-            px, py = 450 + i * 220, 550 - (i % 4) * 80
+        for i in range(10):
+            px, py = 500 + i * 250, 550 - (i % 4) * 100
             platforms.append(Platform(px, py, 150, 30))
-            if i % 3 == 0:
+            if i % 3 == 0 and i > 0:
                 enemies.append(ShootingEnemy(px + 40, py - 50, max_hp=int(4*difficulty)))
-            if i < 11:
-                platforms.append(Platform(px + 180, py + 120, 40, 15, hazard=True))
+            if i < 9:
+                platforms.append(Platform(px + 150, 700, 100, 20, hazard=True))
         platforms.append(Platform(world_w - 400, 500, 400, 40))
         goal = LevelGoal(world_w - 120, 420)
 
     else:
         # Level 5: Arena do Boss Final
+        world_w = 3000 # Arena compacta para o Boss
         platforms.append(Platform(400, 500, 300, 30))
-        m_platforms.append(MovingPlatform(800, 400, 200, 25, 0, 150))
-        platforms.append(Platform(1200, 550, 1200, 40)) # Chão da Arena
-        enemies.append(Boss(1600, 450, max_hp=int(60*difficulty)))
-        platforms.append(Platform(1300, 380, 150, 20))
-        platforms.append(Platform(2100, 380, 150, 20))
+        m_platforms.append(MovingPlatform(800, 450, 200, 25, 200, 0))
+        platforms.append(Platform(1200, 550, 1500, 40)) # Chão da Arena
+        enemies.append(Boss(1800, 450, max_hp=int(60*difficulty)))
+        platforms.append(Platform(1300, 380, 180, 20))
+        platforms.append(Platform(2300, 380, 180, 20))
         orbs.append(HealthOrb(1350, 320))
-        orbs.append(HealthOrb(2150, 320))
-        goal = LevelGoal(world_w - 120, 470)
+        orbs.append(HealthOrb(2450, 320))
+        goal = LevelGoal(2800, 470)
 
     return platforms, enemies, checkpoints, orbs, goal, switches, gates, m_platforms, world_w, world_h
 
@@ -1546,13 +1557,13 @@ class Game:
         self.player.handle_input(keys)
         self.player.apply_gravity()
 
-        # Plataformas Móveis (update antes da colisão)
-        for mp in self.m_platforms:
-            mp.update(self.player)
-
         # Merge platforms and active gates
         active_colliders = self.platforms + [g for g in self.gates if not g.open]
         self.player.move_and_collide(active_colliders)
+
+        # Plataformas Móveis (update após colisão para garantir estado on_ground)
+        for mp in self.m_platforms:
+            mp.update(self.player)
 
         # Hazard check
         for p in self.platforms:
@@ -1575,11 +1586,16 @@ class Game:
         # Goal
         if self.goal.update(self.player):
             if self.current_level < 5:
+                # Burst de vitória
+                for _ in range(20):
+                    self.player.particles.append(Particle(self.player.rect.centerx, self.player.rect.centery, palette="soul"))
                 self.unlocked_levels = max(self.unlocked_levels, self.current_level + 1)
                 self.state = self.STATE_LEVEL_SELECT
                 self.hud.show_message(f"Level {self.current_level} Completo!", 120)
             else:
-                self.hud.show_message("PARABÉNS! JOGO CONCLUÍDO!", 180)
+                for _ in range(50):
+                    self.player.particles.append(Particle(self.player.rect.centerx, self.player.rect.centery, palette="soul"))
+                self.hud.show_message("PARABÉNS! JOGO CONCLUÍDO!", 300)
                 self.state = self.STATE_LEVEL_SELECT
 
         # Morreu ao cair no abismo
