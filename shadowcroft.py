@@ -1148,11 +1148,12 @@ class Camera:
 # ═══════════════════════════════════════════════════════════════
 class Switch:
     def __init__(self, x, y):
-        self.rect = pygame.Rect(x, y, 30, 30)
+        self.rect = pygame.Rect(x, y, 40, 40) # Aumentado para facilitar hit
         self.active = False
         self.color = (255, 100, 100)
 
     def update(self, player, particles):
+        # Hitbox de ativação generosa
         if not self.active and player.is_attacking and self.rect.colliderect(player.attack_rect):
             self.active = True
             self.color = (100, 255, 100)
@@ -1179,7 +1180,7 @@ class Gate:
 
     def update(self, is_active):
         if is_active and not self.open:
-            self.rect.y -= 2
+            self.rect.y -= 4 # Velocidade de abertura aumentada
             if self.rect.y < self.y_start - self.rect.h:
                 self.open = True
         elif not is_active and self.open: # Reclose if needed? No, usually stay open.
@@ -1426,26 +1427,32 @@ def build_level(level_id=1, difficulty=1.0):
 
     elif level_id == 2:
         # Level 2: Introdução a Moving Platforms
-        m_platforms.append(MovingPlatform(450, 520, 120, 25, 150, 0))
-        platforms.append(Platform(750, 450, 200, 30))
-        enemies.append(ShootingEnemy(800, 400, max_hp=int(2*difficulty)))
-        m_platforms.append(MovingPlatform(1050, 500, 120, 25, 0, -150))
-        platforms.append(Platform(1300, 320, 250, 30, hazard=True))
-        orbs.append(HealthOrb(1400, 250))
-        platforms.append(Platform(1650, 500, world_w - 1650, 40))
-        goal = LevelGoal(world_w - 120, 420)
+        m_platforms.append(MovingPlatform(450, 520, 120, 25, 200, 0))
+        platforms.append(Platform(850, 450, 200, 30))
+        enemies.append(ShootingEnemy(900, 400, max_hp=int(2*difficulty)))
+        m_platforms.append(MovingPlatform(1150, 500, 120, 25, 0, -150))
+        platforms.append(Platform(1350, 350, 250, 30, hazard=True))
+        orbs.append(HealthOrb(1450, 280))
+        platforms.append(Platform(1750, 550, world_w - 1750, 40))
+        goal = LevelGoal(world_w - 150, 470)
 
     elif level_id == 3:
         # Level 3: Puzzle e Combate Ranged
-        switches.append(Switch(450, 550))
-        gates.append(Gate(700, 250, 40, 400))
-        platforms.append(Platform(400, 350, 200, 30)) # Mais alto
-        enemies.append(ShootingEnemy(450, 300, max_hp=int(3*difficulty)))
-        m_platforms.append(MovingPlatform(850, 450, 150, 25, 300, 0)) # Curso maior
-        platforms.append(Platform(1250, 350, 200, 30, hazard=True))
-        orbs.append(HealthOrb(1350, 280))
-        platforms.append(Platform(1600, 550, world_w - 1600, 40))
-        goal = LevelGoal(world_w - 120, 500)
+        platforms.append(Platform(400, 600, 400, 40))
+        switches.append(Switch(550, 560))
+        gates.append(Gate(850, 360, 40, 240))
+
+        platforms.append(Platform(400, 400, 250, 30))
+        enemies.append(ShootingEnemy(450, 350, max_hp=int(3*difficulty)))
+
+        platforms.append(Platform(1000, 550, 300, 30))
+        m_platforms.append(MovingPlatform(1400, 450, 150, 25, 300, 0))
+
+        platforms.append(Platform(1800, 350, 200, 30, hazard=True))
+        orbs.append(HealthOrb(1850, 280))
+
+        platforms.append(Platform(2100, 550, world_w - 2100, 40))
+        goal = LevelGoal(world_w - 150, 470)
 
     elif level_id == 4:
         # Level 4: "Ascensão" (Desafio de pulo)
@@ -1461,16 +1468,16 @@ def build_level(level_id=1, difficulty=1.0):
 
     else:
         # Level 5: Arena do Boss Final
-        world_w = 3000 # Arena compacta para o Boss
+        world_w = 3500 # Arena estendida
         platforms.append(Platform(400, 500, 300, 30))
-        m_platforms.append(MovingPlatform(800, 450, 200, 25, 200, 0))
-        platforms.append(Platform(1200, 550, 1500, 40)) # Chão da Arena
-        enemies.append(Boss(1800, 450, max_hp=int(60*difficulty)))
-        platforms.append(Platform(1300, 380, 180, 20))
-        platforms.append(Platform(2300, 380, 180, 20))
-        orbs.append(HealthOrb(1350, 320))
-        orbs.append(HealthOrb(2450, 320))
-        goal = LevelGoal(2800, 470)
+        m_platforms.append(MovingPlatform(800, 450, 200, 25, 300, 0))
+        platforms.append(Platform(1200, 550, 2000, 40)) # Chão da Arena
+        enemies.append(Boss(2000, 450, max_hp=int(60*difficulty)))
+        platforms.append(Platform(1500, 380, 200, 20))
+        platforms.append(Platform(2500, 380, 200, 20))
+        orbs.append(HealthOrb(1600, 320))
+        orbs.append(HealthOrb(2600, 320))
+        goal = LevelGoal(world_w - 150, 470)
 
     return platforms, enemies, checkpoints, orbs, goal, switches, gates, m_platforms, world_w, world_h
 
@@ -1607,10 +1614,12 @@ class Game:
 
         # Atualiza inimigos
         for e in self.enemies:
+            # Inimigos também colidem com portões fechados
+            enemy_colliders = self.platforms + [g for g in self.gates if not g.open]
             if isinstance(e, (ShootingEnemy, Boss)):
-                e.update(self.platforms, self.player.rect, self.projectiles)
+                e.update(enemy_colliders, self.player.rect, self.projectiles)
             else:
-                e.update(self.platforms, self.player.rect)
+                e.update(enemy_colliders, self.player.rect)
 
         # Dano dos ataques do player nos inimigos
         if self.player.is_attacking and self.player.attack_rect.width > 0:
