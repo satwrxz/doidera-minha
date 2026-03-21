@@ -6,8 +6,8 @@
 ║   Desenvolvido com Python + Pygame                           ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  CONTROLES:                                                  ║
-║    ← →       Mover                                          ║
-║    Z / Space Pular  (segure para pulo mais alto)            ║
+║    A D       Mover                                          ║
+║    W / Space Pular  (segure para pulo mais alto)            ║
 ║    X         Atacar                                          ║
 ║    R         Reiniciar (após morte)                          ║
 ║    ESC       Sair                                            ║
@@ -430,6 +430,18 @@ class Enemy:
                 self.state = self.CHASE
                 self.attack_cd = 60
 
+        # Não cai de plataformas (limite de borda)
+        if self.on_ground:
+            look_x = self.rect.x + (self.rect.w if self.facing == 1 else -4)
+            foot_rect = pygame.Rect(look_x, self.rect.bottom, 4, 4)
+            on_edge = not any(p.rect.colliderect(foot_rect) for p in platforms)
+            if on_edge:
+                if self.state == self.PATROL:
+                    self.facing *= -1
+                    self.vx = self.patrol_spd * self.facing
+                else:
+                    self.vx = 0
+
         # --- Física ---
         self.vy += GRAVITY
         self.vy = min(self.vy, MAX_FALL_SPD)
@@ -437,14 +449,6 @@ class Enemy:
         self._collide_x(platforms)
         self.rect.y += int(self.vy)
         self._collide_y(platforms)
-
-        # Não cai de plataformas na patrulha (limite de borda)
-        if self.state == self.PATROL and self.on_ground:
-            look_x = self.rect.x + (self.rect.w if self.facing == 1 else -4)
-            foot_rect = pygame.Rect(look_x, self.rect.bottom, 4, 4)
-            on_edge = not any(p.rect.colliderect(foot_rect) for p in platforms)
-            if on_edge:
-                self.facing *= -1
 
     def _collide_x(self, platforms: List[Platform]):
         for p in platforms:
@@ -593,9 +597,9 @@ class Player:
 
         # Movimento horizontal com aceleração suave
         move = 0
-        if keys[pygame.K_LEFT]:
+        if keys[pygame.K_a]:
             move = -1
-        if keys[pygame.K_RIGHT]:
+        if keys[pygame.K_d]:
             move = 1
 
         if move != 0:
@@ -609,7 +613,7 @@ class Player:
                 self.vx = 0
 
         # Buffer de pulo (permite pressionar um pouco antes de chegar ao chão)
-        jump_keys = keys[pygame.K_z] or keys[pygame.K_SPACE]
+        jump_keys = keys[pygame.K_w] or keys[pygame.K_z] or keys[pygame.K_SPACE]
         if jump_keys:
             self.jump_buffer = JUMP_BUFFER
 
@@ -1052,7 +1056,7 @@ class HUD:
         sub = font_sub.render("Pressione qualquer tecla para começar", True, C_UI_TEXT)
         surface.blit(sub, (SCREEN_W // 2 - sub.get_width() // 2, SCREEN_H // 2 + 30))
 
-        hint = font_sub.render("← → Mover   |   Z/Space Pular   |   X Atacar", True,
+        hint = font_sub.render("A D Mover   |   W/Space Pular   |   X Atacar", True,
                                 (130, 120, 170))
         surface.blit(hint, (SCREEN_W // 2 - hint.get_width() // 2, SCREEN_H // 2 + 70))
 
