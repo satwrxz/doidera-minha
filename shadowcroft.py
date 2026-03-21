@@ -8,7 +8,7 @@
 ║  CONTROLES:                                                  ║
 ║    A D       Mover                                          ║
 ║    W / Space Pular  (segure para pulo mais alto)            ║
-║    X         Atacar                                          ║
+║    M1/Click  Atacar                                          ║
 ║    R         Reiniciar (após morte)                          ║
 ║    ESC       Sair                                            ║
 ╚══════════════════════════════════════════════════════════════╝
@@ -100,6 +100,40 @@ PARTICLE_PALETTES = {
     "death":  [(200,  60,  80), (150,  30,  50), (255, 100, 120)],
     "dust":   [(90,  78, 115),  (70,  60,  95),  (110, 95, 140)],
 }
+
+
+# ═══════════════════════════════════════════════════════════════
+#  CLASSE: HealthOrb  —  item de cura
+# ═══════════════════════════════════════════════════════════════
+class HealthOrb:
+    """
+    Orbe que restaura vida ao jogador.
+    """
+    def __init__(self, x: int, y: int):
+        self.rect = pygame.Rect(x, y, 20, 20)
+        self.collected = False
+        self.timer = random.random() * math.tau
+
+    def update(self, player):
+        self.timer += 0.1
+        if not self.collected and self.rect.colliderect(player.rect):
+            if player.hp < player.max_hp:
+                player.hp += 1
+                self.collected = True
+                return True
+        return False
+
+    def draw(self, surface, cam_x: int, cam_y: int):
+        if self.collected:
+            return
+        rx = self.rect.x - cam_x
+        ry = self.rect.y - cam_y + int(math.sin(self.timer) * 5)
+
+        # Brilho externo
+        draw_circle_alpha(surface, C_SOUL_A, (rx + 10, ry + 10), 12, 100)
+        # Núcleo
+        pygame.draw.circle(surface, C_WHITE, (rx + 10, ry + 10), 6)
+        pygame.draw.circle(surface, C_SOUL_B, (rx + 10, ry + 10), 6, 2)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -439,6 +473,10 @@ class Enemy:
                 if self.state == self.PATROL:
                     self.facing *= -1
                     self.vx = self.patrol_spd * self.facing
+                elif self.state in (self.CHASE, self.ATTACK):
+                    # Tenta pular entre plataformas se estiver perseguindo
+                    self.vy = -11.0
+                    self.on_ground = False
                 else:
                     self.vx = 0
 
@@ -638,8 +676,9 @@ class Player:
                 if self.vy < -7:
                     self.vy *= JUMP_HOLD_MULT
 
-        # Ataque
-        if keys[pygame.K_x] and self.attack_cd == 0 and not self.is_attacking:
+        # Ataque (X ou Clique do Mouse)
+        mouse_click = pygame.mouse.get_pressed()[0]
+        if (keys[pygame.K_x] or mouse_click) and self.attack_cd == 0 and not self.is_attacking:
             self._start_attack()
 
     def _start_attack(self):
@@ -1056,7 +1095,7 @@ class HUD:
         sub = font_sub.render("Pressione qualquer tecla para começar", True, C_UI_TEXT)
         surface.blit(sub, (SCREEN_W // 2 - sub.get_width() // 2, SCREEN_H // 2 + 30))
 
-        hint = font_sub.render("A D Mover   |   W/Space Pular   |   X Atacar", True,
+        hint = font_sub.render("A D Mover   |   W/Space Pular   |   M1 Atacar", True,
                                 (130, 120, 170))
         surface.blit(hint, (SCREEN_W // 2 - hint.get_width() // 2, SCREEN_H // 2 + 70))
 
@@ -1148,10 +1187,16 @@ def build_level():
     checkpoints.append(Checkpoint(1800, 332))  # Topo da escalada
     checkpoints.append(Checkpoint(3250, 492))  # Antes da área final
 
+    # ── Health Orbs ─────────────────────────────────────────────
+    orbs = []
+    orbs.append(HealthOrb(500, 400))
+    orbs.append(HealthOrb(2100, 200))
+    orbs.append(HealthOrb(3650, 450))
+
     world_w = 4500
     world_h = 900
 
-    return platforms, enemies, checkpoints, world_w, world_h
+    return platforms, enemies, checkpoints, orbs, world_w, world_h
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1178,7 +1223,7 @@ class Game:
 
     def _init_game(self):
         """(Re)inicializa todos os objetos do jogo."""
-        self.platforms, self.enemies, self.checkpoints, self.world_w, self.world_h = build_level()
+        self.platforms, self.enemies, self.checkpoints, self.orbs, self.world_w, self.world_h = build_level()
         self.player = Player(80, 520)
         self.camera = Camera(self.world_w, self.world_h)
         self.camera.x = 0
@@ -1228,7 +1273,7 @@ class Game:
         self.player.update(self.platforms, self.checkpoints, self.enemies)
 
         # Morreu ao cair no abismo
-        if self.player.rect.top > self.world_h + 100:
+        if self.player.rect.top > self.world_h + 100 and not self.player.is_dead:
             self.player._die()
 
         if self.player.is_dead and self.player.death_timer > 60:
@@ -1250,6 +1295,12 @@ class Game:
         # Checkpoints
         for chk in self.checkpoints:
             chk.update()
+
+        # Health Orbs
+        for orb in self.orbs:
+            if orb.update(self.player):
+                self.hud.show_message("Vida restaurada!", 60)
+        self.orbs = [o for o in self.orbs if not o.collected]
 
         # Câmera
         self.camera.follow(self.player.rect, smooth=0.12)
@@ -1291,6 +1342,10 @@ class Game:
         # Checkpoints
         for chk in self.checkpoints:
             chk.draw(screen, cam_x, cam_y)
+
+        # Health Orbs
+        for orb in self.orbs:
+            orb.draw(screen, cam_x, cam_y)
 
         # Inimigos
         for e in self.enemies:
