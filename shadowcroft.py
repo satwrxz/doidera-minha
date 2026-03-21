@@ -221,10 +221,20 @@ class Platform:
     Plataforma sólida do mundo.
     Suporta variações de cor para criar profundidade visual.
     """
-    def __init__(self, x: int, y: int, w: int, h: int, variant: int = 0, hazard: bool = False):
+    def __init__(self, x: int, y: int, w: int, h: int, variant: int = 0, hazard: bool = False, hazard_timed: bool = False, hazard_offset: int = 0):
         self.rect = pygame.Rect(x, y, w, h)
         self.variant = variant  # 0=normal, 1=pedra, 2=raiz orgânica
         self.hazard = hazard    # Espinhos/perigo
+        self.hazard_timed = hazard_timed
+        self.hazard_offset = hazard_offset
+        self.timer = 0
+
+    def is_hazard_active(self):
+        if not self.hazard: return False
+        if not self.hazard_timed: return True
+        # Ciclo de 120 frames (~2s): 60 off, 60 on
+        cycle = (pygame.time.get_ticks() // 16 + self.hazard_offset) % 120
+        return cycle > 60
 
     def draw(self, surface, cam_x: int, cam_y: int):
         rx = self.rect.x - cam_x
@@ -250,7 +260,7 @@ class Platform:
         # Linha de brilho sutil no topo
         pygame.draw.rect(surface, C_PLT_GLOW, (rx + 1, ry + 1, rw - 2, 1))
 
-        if self.hazard:
+        if self.is_hazard_active():
             # Desenha "espinhos" simples
             for i in range(0, rw, 10):
                 pts = [(rx + i, ry), (rx + i + 5, ry - 8), (rx + i + 10, ry)]
@@ -656,45 +666,67 @@ class ShootingEnemy(Enemy):
 class Boss(Enemy):
     def __init__(self, x, y, max_hp=20):
         super().__init__(x, y, patrol_range=200, max_hp=max_hp)
-        self.rect = pygame.Rect(x, y, 80, 100)
+        self.rect = pygame.Rect(x, y, 90, 110)
         self.phase_timer = 0
         self.shoot_cd = 0
+        self.current_pattern = 0
+        self.glow_intensity = 0
 
     def update(self, platforms, player_rect, projectiles):
         super().update(platforms, player_rect)
         self.shoot_cd = max(0, self.shoot_cd - 1)
         self.phase_timer += 1
 
+        # Visual feedback for attack timing
+        self.glow_intensity = max(0, self.glow_intensity - 2)
+
         dx = player_rect.centerx - self.rect.centerx
         dy = player_rect.centery - self.rect.centery
         dist = math.sqrt(dx**2 + dy**2)
 
-        if self.state != self.DEAD and dist < 600:
-            # Padrão de ataque: rajada circular
-            if self.phase_timer % 100 == 0:
-                for angle in range(0, 360, 30):
+        if self.state != self.DEAD and dist < 700:
+            # Ciclo de 240 frames (~4s) para alternar padrões
+            cycle_pos = self.phase_timer % 240
+
+            # Telegraphing (brilho aumenta antes do ataque)
+            if cycle_pos > 180:
+                self.glow_intensity = (cycle_pos - 180) * 4
+
+            # Pattern 1: Rajada Circular (frames 0-20)
+            if cycle_pos == 0:
+                self.glow_intensity = 255
+                for angle in range(0, 360, 45):
                     rad = math.radians(angle)
-                    pvx, pvy = math.cos(rad) * 4, math.sin(rad) * 4
+                    pvx, pvy = math.cos(rad) * 6, math.sin(rad) * 6
                     projectiles.append(Projectile(self.rect.centerx, self.rect.centery, pvx, pvy))
 
-            # Tiro direcionado (apenas se tiver cooldown e player estiver perto)
-            if self.shoot_cd == 0:
+            # Pattern 2: Triplo Tiro Direcionado (frames 80, 100, 120)
+            if cycle_pos in (80, 100, 120):
+                self.glow_intensity = 180
                 angle = math.atan2(dy, dx)
-                # Mais rápido conforme HP diminui
-                speed = 7 + (1 - self.hp/self.max_hp) * 5
+                speed = 9 + (1 - self.hp/self.max_hp) * 4
                 projectiles.append(Projectile(self.rect.centerx, self.rect.centery, math.cos(angle)*speed, math.sin(angle)*speed))
-                self.shoot_cd = max(20, 50 - int((1 - self.hp/self.max_hp) * 30))
+
+            # Pattern 3: Chuva de Projéteis (frames 180-220)
+            if cycle_pos > 180 and cycle_pos % 10 == 0:
+                rx = self.rect.centerx + random.randint(-400, 400)
+                projectiles.append(Projectile(rx, self.rect.top - 100, 0, 8))
 
     def draw(self, surface, cam_x, cam_y):
         if self.state == self.DEAD and self.dead_timer > 20: return
         rx, ry = self.rect.x - cam_x, self.rect.y - cam_y
         # Visual de Boss imponente
-        pygame.draw.rect(surface, (80, 20, 40), (rx, ry, 80, 100), border_radius=10)
-        pygame.draw.rect(surface, (150, 40, 60), (rx + 10, ry + 10, 60, 80), border_radius=8)
+        pygame.draw.rect(surface, (80, 20, 40), (rx, ry, 90, 110), border_radius=10)
+        pygame.draw.rect(surface, (150, 40, 60), (rx + 10, ry + 10, 70, 90), border_radius=8)
+
+        # Aura de ataque (Telegraphing)
+        if self.glow_intensity > 0:
+            draw_circle_alpha(surface, (255, 100, 100), (rx + 45, ry + 55), 70, self.glow_intensity // 3)
+
         # Olhos grandes
         eye_y = ry + 30 + int(math.sin(self.bob_timer*0.1)*5)
-        pygame.draw.circle(surface, (255, 0, 0), (rx + 25, eye_y), 10)
-        pygame.draw.circle(surface, (255, 0, 0), (rx + 55, eye_y), 10)
+        pygame.draw.circle(surface, (255, 0, 0), (rx + 30, eye_y), 12)
+        pygame.draw.circle(surface, (255, 0, 0), (rx + 60, eye_y), 12)
         if self.hp < self.max_hp:
             self._draw_hp_bar(surface, rx, ry - 20)
 
@@ -1426,18 +1458,18 @@ def build_level(level_id=1, difficulty=1.0):
         goal = LevelGoal(world_w - 120, 500)
 
     elif level_id == 2:
-        # Level 2: Introdução a Moving Platforms
+        # Level 2: Introdução a Moving Platforms e Timed Spikes
         m_platforms.append(MovingPlatform(450, 520, 120, 25, 200, 0))
         platforms.append(Platform(850, 450, 200, 30))
         enemies.append(ShootingEnemy(900, 400, max_hp=int(2*difficulty)))
         m_platforms.append(MovingPlatform(1150, 500, 120, 25, 0, -150))
-        platforms.append(Platform(1350, 350, 250, 30, hazard=True))
+        platforms.append(Platform(1350, 350, 250, 30, hazard=True, hazard_timed=True))
         orbs.append(HealthOrb(1450, 280))
         platforms.append(Platform(1750, 550, world_w - 1750, 40))
         goal = LevelGoal(world_w - 150, 470)
 
     elif level_id == 3:
-        # Level 3: Puzzle e Combate Ranged
+        # Level 3: Puzzle e Combate Ranged com Timed Spikes
         platforms.append(Platform(400, 600, 400, 40))
         switches.append(Switch(550, 560))
         gates.append(Gate(850, 360, 40, 240))
@@ -1448,8 +1480,10 @@ def build_level(level_id=1, difficulty=1.0):
         platforms.append(Platform(1000, 550, 300, 30))
         m_platforms.append(MovingPlatform(1400, 450, 150, 25, 300, 0))
 
-        platforms.append(Platform(1800, 350, 200, 30, hazard=True))
-        orbs.append(HealthOrb(1850, 280))
+        # Sequência de timed spikes com offsets
+        platforms.append(Platform(1750, 350, 120, 30, hazard=True, hazard_timed=True, hazard_offset=0))
+        platforms.append(Platform(1900, 350, 120, 30, hazard=True, hazard_timed=True, hazard_offset=40))
+        orbs.append(HealthOrb(1950, 280))
 
         platforms.append(Platform(2100, 550, world_w - 2100, 40))
         goal = LevelGoal(world_w - 150, 470)
@@ -1575,7 +1609,7 @@ class Game:
 
         # Hazard check (espinhos)
         for p in self.platforms:
-            if p.hazard:
+            if p.is_hazard_active():
                 # Cria uma hitbox ligeiramente deslocada para cima para pegar os espinhos visuais
                 hazard_rect = pygame.Rect(p.rect.x, p.rect.y - 10, p.rect.w, 15)
                 if self.player.rect.colliderect(hazard_rect):
