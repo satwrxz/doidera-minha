@@ -477,14 +477,17 @@ class Enemy:
             if self.attack_timer >= 28:
                 self.state=self.CHASE; self.attack_cd=65
 
-        # Borda de plataforma: NUNCA pula, só vira — corrige o bug de cair
-        if self.on_ground and self.state in (self.PATROL, self.CHASE):
-            look_x = self.rect.right+2 if self.facing==1 else self.rect.left-6
+        # Borda de plataforma: Pula se perseguindo, senão vira
+        if self.on_ground and self.state in (self.PATROL, self.CHASE, self.ATTACK):
+            look_x = self.rect.right + 2 if self.facing == 1 else self.rect.left - 6
             foot_rect = pygame.Rect(look_x, self.rect.bottom, 4, 4)
             on_edge = not any(p.rect.colliderect(foot_rect) for p in platforms)
             if on_edge:
-                self.facing *= -1
-                self.vx = self.patrol_spd * self.facing
+                if self.state in (self.CHASE, self.ATTACK):
+                    self.vy = -12  # Tenta pular o gap
+                else:
+                    self.facing *= -1
+                    self.vx = self.patrol_spd * self.facing
 
         self.vy = min(self.vy+GRAVITY, MAX_FALL)
         self.rect.x += int(self.vx);  self._collide_x(platforms)
@@ -746,7 +749,7 @@ class Boss(Enemy):
         self.phase     = 1
         self.phase_timer=0
         self.shoot_cd  = 0
-        self.glow      = 0
+        self.glow_intensity = 0
         self.stomp_cd  = 0
         self.enraged   = False
 
@@ -759,7 +762,7 @@ class Boss(Enemy):
         self.phase_timer+=1
         self.shoot_cd=max(0,self.shoot_cd-1)
         self.stomp_cd=max(0,self.stomp_cd-1)
-        self.glow    =max(0,self.glow-4)
+        self.glow_intensity = max(0, self.glow_intensity - 4)
 
         hp_pct = self.hp/self.max_hp
         self.phase = 1 if hp_pct>0.60 else (2 if hp_pct>0.30 else 3)
@@ -786,29 +789,31 @@ class Boss(Enemy):
         cycle = self.phase_timer % max(150, 240-self.phase*30)
 
         # Telegraphing: brilha antes dos ataques
-        if cycle > max(100,160-self.phase*20):
-            self.glow = min(255, self.glow+6)
+        if cycle > max(100, 160 - self.phase * 20):
+            self.glow_intensity = min(255, self.glow_intensity + 6)
 
         # Fase 1+: Rajada circular (ciclo 0)
-        if cycle==0 and self.shoot_cd==0:
-            count = 8+self.phase*4
+        if cycle == 0 and self.shoot_cd == 0:
+            count = 8 + self.phase * 4
             for i in range(count):
-                ang = math.tau*i/count
-                spd_p = 5+self.phase*0.5
-                projectiles.append(Projectile(self.rect.centerx,self.rect.centery,
-                                              math.cos(ang)*spd_p,math.sin(ang)*spd_p))
-            self.glow=255; self.shoot_cd=20
+                ang = math.tau * i / count
+                spd_p = 5 + self.phase * 0.5
+                projectiles.append(Projectile(self.rect.centerx, self.rect.centery,
+                                              math.cos(ang) * spd_p, math.sin(ang) * spd_p))
+            self.glow_intensity = 255
+            self.shoot_cd = 20
 
         # Fase 2+: Triplo tiro direcionado
-        if self.phase>=2 and cycle in (60,80,100) and self.shoot_cd==0:
-            angle=math.atan2(dy,dx)
-            speed=9+self.phase*1.2
-            spreads=[-0.22,0,0.22] if self.phase>=3 else [-0.15,0,0.15]
+        if self.phase >= 2 and cycle in (60, 80, 100) and self.shoot_cd == 0:
+            angle = math.atan2(dy, dx)
+            speed = 9 + self.phase * 1.2
+            spreads = [-0.22, 0, 0.22] if self.phase >= 3 else [-0.15, 0, 0.15]
             for s in spreads:
-                a=angle+s
-                projectiles.append(Projectile(self.rect.centerx,self.rect.centery,
-                                              math.cos(a)*speed,math.sin(a)*speed))
-            self.glow=180; self.shoot_cd=12
+                a = angle + s
+                projectiles.append(Projectile(self.rect.centerx, self.rect.centery,
+                                              math.cos(a) * speed, math.sin(a) * speed))
+            self.glow_intensity = 180
+            self.shoot_cd = 12
 
         # Fase 3: Chuva de projéteis do céu
         if self.phase>=3 and cycle>110 and cycle%9==0:
@@ -857,8 +862,8 @@ class Boss(Enemy):
         draw_circle_alpha(surf,aura_col,(rx+w//2,ry+h//2),60+bob,40)
 
         # Telegraphing glow
-        if self.glow>0:
-            draw_circle_alpha(surf,(255,80,80),(rx+w//2,ry+h//2),80,self.glow//3)
+        if self.glow_intensity > 0:
+            draw_circle_alpha(surf, (255, 80, 80), (rx + w // 2, ry + h // 2), 80, self.glow_intensity // 3)
 
         # Corpo
         pygame.draw.rect(surf,(60,15,35),(rx,ry+bob,w,h),border_radius=12)
@@ -1243,8 +1248,9 @@ class Camera:
 #  CLASSES: Switch, Gate, MovingPlatform, LevelGoal
 # ═══════════════════════════════════════════════════════════════════
 class Switch:
-    def __init__(self,x,y):
-        self.rect=pygame.Rect(x,y,36,36); self.active=False
+    def __init__(self, x, y):
+        self.rect = pygame.Rect(x, y, 40, 40)
+        self.active = False
     def update(self,player,particles):
         if not self.active and player.is_attacking and self.rect.colliderect(player.attack_rect):
             self.active=True
@@ -1263,9 +1269,9 @@ class Switch:
 class Gate:
     def __init__(self,x,y,w,h):
         self.rect=pygame.Rect(x,y,w,h); self.open=False; self.y_start=y
-    def update(self,is_active):
+    def update(self, is_active):
         if is_active and not self.open:
-            self.rect.y-=5
+            self.rect.y -= 10
             if self.rect.y<self.y_start-self.rect.h: self.open=True
     def draw(self,surf,cx,cy):
         if self.open: return
@@ -1288,7 +1294,7 @@ class MovingPlatform:
         ny=self.start_pos.y+self.target_offset.y*o
         vx=nx-self.rect.x; vy=ny-self.rect.y
         self.rect.x=int(nx); self.rect.y=int(ny)
-        foot=pygame.Rect(player.rect.x,player.rect.bottom,player.rect.w,5)
+        foot = pygame.Rect(player.rect.x, player.rect.bottom, player.rect.w, 4)
         if foot.colliderect(self.rect) and player.vy>=-1:
             player.rect.x+=int(vx); player.rect.y=self.rect.top-player.rect.h
             player.on_ground=True; player.vy=0
@@ -1583,7 +1589,7 @@ def build_level(level_id=1, difficulty=1.0):
         # Zona 1: Intro + switch
         platforms.append(Platform(  0, 620, 600, 40, 0))
         platforms.append(Platform(600, 560, 300, 30, 1))
-        switches.append(Switch(700, 528))
+        switches.append(Switch(500, 528))
         gates.append(Gate(650, 340, 40, 220))
 
         enemies.append(Enemy(200, 580, 80, hp(3)))
@@ -1695,57 +1701,56 @@ def build_level(level_id=1, difficulty=1.0):
         orbs.append(HealthOrb(3400, 470))
         goal = LevelGoal(3880, 474)
 
-    # ── LEVEL 5: O Boss Final — arena corrigida ───────────────
+    # ── LEVEL 5: O Boss Final — arena redesenhada e compacta ──
     else:
-        world_w, world_h = 3800, 800
+        world_w, world_h = 3000, 800
         level_name = "V — O Boss Final"
         add_walls(world_w, world_h)
 
         # Corredor de chegada
-        platforms.append(Platform(  0, 640, 600, 40, 0))
+        platforms.append(Platform(0, 640, 500, 40, 0))
         enemies.append(Enemy(200, 600, 80, hp(4)))
         enemies.append(ShootingEnemy(380, 600, 80, hp(3)))
         enemies.append(FlyingEnemy(480, 520, hp(3), float_height=460))
-        checkpoints.append(Checkpoint(540, 616))
+        checkpoints.append(Checkpoint(440, 616))
 
         # Moving platform para cruzar abismo
-        m_plats.append(MovingPlatform(660, 620, 150, 22, 280, 0))
+        m_plats.append(MovingPlatform(550, 620, 150, 22, 200, 0))
 
         # Ante-sala
-        platforms.append(Platform(960, 640, 400, 40, 1))
-        enemies.append(Enemy(1020, 600, 80, hp(5)))
-        enemies.append(ShootingEnemy(1150, 600, 80, hp(4)))
-        enemies.append(Enemy(1280, 600, 60, hp(5)))
-        orbs.append(HealthOrb(1180, 570))
-        checkpoints.append(Checkpoint(1180, 616))
+        platforms.append(Platform(850, 640, 300, 40, 1))
+        enemies.append(Enemy(900, 600, 80, hp(5)))
+        enemies.append(ShootingEnemy(1000, 600, 80, hp(4)))
+        enemies.append(Enemy(1100, 600, 60, hp(5)))
+        orbs.append(HealthOrb(950, 570))
+        checkpoints.append(Checkpoint(950, 616))
 
         # ── ARENA DO BOSS ─────────────────────────────────────
-        # Chão sólido e extenso — garante que o boss não caia
-        ARENA_X1, ARENA_X2 = 1400, 3600
+        ARENA_X1, ARENA_X2 = 1200, 2900
         platforms.append(Platform(ARENA_X1, 560, ARENA_X2-ARENA_X1, 45, 0))
 
-        # Paredes invisíveis laterais da arena (impedem saída do boss)
-        platforms.append(Platform(ARENA_X1-40, 0, 40, 900))   # parede esquerda arena
-        platforms.append(Platform(ARENA_X2,    0, 40, 900))   # parede direita arena
+        # Paredes invisíveis
+        platforms.append(Platform(ARENA_X1-40, 0, 40, 900))
+        platforms.append(Platform(ARENA_X2, 0, 40, 900))
 
-        # Plataformas internas para o player se esquivar
-        platforms.append(Platform(1550, 470, 200, 22, 2))
-        platforms.append(Platform(1950, 410, 200, 22, 1))
-        platforms.append(Platform(2350, 470, 200, 22, 2))
-        platforms.append(Platform(2750, 410, 200, 22, 1))
-        platforms.append(Platform(3150, 470, 200, 22, 2))
+        # Plataformas internas
+        platforms.append(Platform(1400, 470, 200, 22, 2))
+        platforms.append(Platform(1700, 410, 200, 22, 1))
+        platforms.append(Platform(2000, 470, 200, 22, 2))
+        platforms.append(Platform(2300, 410, 200, 22, 1))
+        platforms.append(Platform(2600, 470, 200, 22, 2))
 
-        # HealthOrbs espalhados pela arena
-        orbs.append(HealthOrb(1600, 400))
-        orbs.append(HealthOrb(2500, 400))
-        orbs.append(HealthOrb(3200, 400))
+        # HealthOrbs
+        orbs.append(HealthOrb(1450, 400))
+        orbs.append(HealthOrb(2050, 400))
+        orbs.append(HealthOrb(2650, 400))
 
-        # Boss (arena clamped a ARENA_X1+40..ARENA_X2-80)
-        boss = Boss(2400, 470, hp(35), arena_x1=ARENA_X1+20, arena_x2=ARENA_X2-20)
+        # Boss
+        boss = Boss(2000, 470, hp(35), arena_x1=ARENA_X1+20, arena_x2=ARENA_X2-20)
         enemies.append(boss)
 
-        # Goal após o boss
-        goal = LevelGoal(3650, 484)
+        # Goal
+        goal = LevelGoal(2850, 484)
 
     return (platforms, enemies, checkpoints, orbs, goal,
             switches, gates, m_plats, world_w, world_h, level_name)
@@ -1824,7 +1829,7 @@ class Game:
         # Hazard damage
         for p in self.platforms:
             if p.is_hazard_active():
-                hr=pygame.Rect(p.rect.x,p.rect.y-12,p.rect.w,16)
+                hr = pygame.Rect(p.rect.x, p.rect.y - 10, p.rect.w, 10)
                 if self.player.rect.colliderect(hr):
                     self.player.take_damage(1,p.rect.centerx)
                     self.camera.add_shake(5)
@@ -1898,7 +1903,7 @@ class Game:
                 self.unlocked=max(self.unlocked,self.current_level+1)
                 self.hud.show_message(f"✦ Fase {self.current_level} Concluída! ✦",140)
             else:
-                self.hud.show_message("✦✦ JOGO CONCLUÍDO! PARABÉNS! ✦✦",300)
+                self.hud.show_message("PARABÉNS! JOGO CONCLUÍDO!", 300)
             self.state=self.S_SELECT
 
         # Morte por queda
