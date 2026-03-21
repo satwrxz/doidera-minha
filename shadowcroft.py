@@ -1455,15 +1455,16 @@ def build_level(level_id=1, difficulty=1.0):
         goal = LevelGoal(world_w - 150, 470)
 
     elif level_id == 4:
-        # Level 4: "Ascensão" (Desafio de pulo)
-        for i in range(10):
-            px, py = 500 + i * 250, 550 - (i % 4) * 100
-            platforms.append(Platform(px, py, 150, 30))
+        # Level 4: "Ascensão" (Desafio de pulo) - Mais plataformas para garantir alcance
+        for i in range(14):
+            px, py = 500 + i * 300, 550 - (i % 4) * 80
+            platforms.append(Platform(px, py, 180, 30))
             if i % 3 == 0 and i > 0:
                 enemies.append(ShootingEnemy(px + 40, py - 50, max_hp=int(4*difficulty)))
-            if i < 9:
-                platforms.append(Platform(px + 150, 700, 100, 20, hazard=True))
-        platforms.append(Platform(world_w - 400, 500, 400, 40))
+            if i < 13:
+                # Spikes posicionados de forma mais clara
+                platforms.append(Platform(px + 200, 650, 80, 20, hazard=True))
+        platforms.append(Platform(world_w - 500, 500, 500, 40))
         goal = LevelGoal(world_w - 120, 420)
 
     else:
@@ -1572,10 +1573,13 @@ class Game:
         for mp in self.m_platforms:
             mp.update(self.player)
 
-        # Hazard check
+        # Hazard check (espinhos)
         for p in self.platforms:
-            if p.hazard and self.player.rect.colliderect(p.rect):
-                self.player.take_damage(1, p.rect.centerx)
+            if p.hazard:
+                # Cria uma hitbox ligeiramente deslocada para cima para pegar os espinhos visuais
+                hazard_rect = pygame.Rect(p.rect.x, p.rect.y - 10, p.rect.w, 15)
+                if self.player.rect.colliderect(hazard_rect):
+                    self.player.take_damage(1, p.rect.centerx)
         self.player.update(self.platforms, self.checkpoints, self.enemies)
 
         # Projectiles
