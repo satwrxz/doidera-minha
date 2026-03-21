@@ -1450,21 +1450,21 @@ def build_level(level_id=1, difficulty=1.0):
     if level_id == 1:
         # Level 1: Introdução Suave
         platforms.append(Platform(450, 520, 200, 30))
-        platforms.append(Platform(750, 480, 200, 30))
-        enemies.append(Enemy(800, 440, max_hp=int(3*difficulty)))
-        platforms.append(Platform(1050, 550, 250, 30))
-        orbs.append(HealthOrb(1100, 480))
+        platforms.append(Platform(720, 450, 200, 30)) # Ajustado y e x para melhor arco
+        enemies.append(Enemy(800, 410, max_hp=int(3*difficulty))) # Mantido no bloco
+        platforms.append(Platform(1050, 500, 250, 30)) # Ajustado y
+        orbs.append(HealthOrb(1100, 430)) # Mantido relativo
         platforms.append(Platform(1400, 580, world_w - 1400, 40))
         goal = LevelGoal(world_w - 120, 500)
 
     elif level_id == 2:
         # Level 2: Introdução a Moving Platforms e Timed Spikes
-        m_platforms.append(MovingPlatform(450, 520, 120, 25, 200, 0))
+        m_platforms.append(MovingPlatform(450, 520, 120, 25, 250, 0)) # Mais curso
         platforms.append(Platform(850, 450, 200, 30))
         enemies.append(ShootingEnemy(900, 400, max_hp=int(2*difficulty)))
-        m_platforms.append(MovingPlatform(1150, 500, 120, 25, 0, -150))
-        platforms.append(Platform(1350, 350, 250, 30, hazard=True, hazard_timed=True))
-        orbs.append(HealthOrb(1450, 280))
+        m_platforms.append(MovingPlatform(1150, 450, 120, 25, 0, -150)) # y ajustado
+        platforms.append(Platform(1350, 320, 250, 30, hazard=True, hazard_timed=True)) # Ajustado y
+        orbs.append(HealthOrb(1450, 250))
         platforms.append(Platform(1750, 550, world_w - 1750, 40))
         goal = LevelGoal(world_w - 150, 470)
 
@@ -1474,45 +1474,45 @@ def build_level(level_id=1, difficulty=1.0):
         switches.append(Switch(550, 560))
         gates.append(Gate(850, 360, 40, 240))
 
-        platforms.append(Platform(400, 400, 250, 30))
-        enemies.append(ShootingEnemy(450, 350, max_hp=int(3*difficulty)))
+        platforms.append(Platform(400, 350, 250, 30)) # y ajustado
+        enemies.append(ShootingEnemy(450, 300, max_hp=int(3*difficulty)))
 
-        platforms.append(Platform(1000, 550, 300, 30))
-        m_platforms.append(MovingPlatform(1400, 450, 150, 25, 300, 0))
+        platforms.append(Platform(950, 520, 300, 30)) # y/x ajustado
+        m_platforms.append(MovingPlatform(1350, 450, 150, 25, 300, 0)) # x ajustado
 
         # Sequência de timed spikes com offsets
         platforms.append(Platform(1750, 350, 120, 30, hazard=True, hazard_timed=True, hazard_offset=0))
-        platforms.append(Platform(1900, 350, 120, 30, hazard=True, hazard_timed=True, hazard_offset=40))
+        platforms.append(Platform(1950, 350, 120, 30, hazard=True, hazard_timed=True, hazard_offset=40)) # x ajustado
         orbs.append(HealthOrb(1950, 280))
 
-        platforms.append(Platform(2100, 550, world_w - 2100, 40))
+        platforms.append(Platform(2200, 550, world_w - 2200, 40)) # x ajustado
         goal = LevelGoal(world_w - 150, 470)
 
     elif level_id == 4:
-        # Level 4: "Ascensão" (Desafio de pulo) - Mais plataformas para garantir alcance
+        # Level 4: "Ascensão" (Desafio de pulo) - Blocos corrigidos
         for i in range(14):
-            px, py = 500 + i * 300, 550 - (i % 4) * 80
+            px, py = 500 + i * 280, 550 - (i % 4) * 90 # Passo x reduzido, y aumentado
             platforms.append(Platform(px, py, 180, 30))
             if i % 3 == 0 and i > 0:
                 enemies.append(ShootingEnemy(px + 40, py - 50, max_hp=int(4*difficulty)))
             if i < 13:
                 # Spikes posicionados de forma mais clara
-                platforms.append(Platform(px + 200, 650, 80, 20, hazard=True))
-        platforms.append(Platform(world_w - 500, 500, 500, 40))
+                platforms.append(Platform(px + 180, 680, 80, 20, hazard=True))
+        platforms.append(Platform(world_w - 600, 500, 600, 40))
         goal = LevelGoal(world_w - 120, 420)
 
     else:
         # Level 5: Arena do Boss Final
         world_w = 3500 # Arena estendida
         platforms.append(Platform(400, 500, 300, 30))
-        m_platforms.append(MovingPlatform(800, 450, 200, 25, 300, 0))
+        m_platforms.append(MovingPlatform(750, 450, 200, 25, 400, 0)) # x/curso ajustado
         platforms.append(Platform(1200, 550, 2000, 40)) # Chão da Arena
         enemies.append(Boss(2000, 450, max_hp=int(60*difficulty)))
-        platforms.append(Platform(1500, 380, 200, 20))
-        platforms.append(Platform(2500, 380, 200, 20))
-        orbs.append(HealthOrb(1600, 320))
-        orbs.append(HealthOrb(2600, 320))
-        goal = LevelGoal(world_w - 150, 470)
+        platforms.append(Platform(1400, 380, 200, 20)) # x ajustado
+        platforms.append(Platform(2400, 380, 200, 20)) # x ajustado
+        orbs.append(HealthOrb(1500, 320)) # x ajustado
+        orbs.append(HealthOrb(2500, 320)) # x ajustado
+        goal = LevelGoal(world_w - 200, 470) # x ajustado para dentro da arena
 
     return platforms, enemies, checkpoints, orbs, goal, switches, gates, m_platforms, world_w, world_h
 
