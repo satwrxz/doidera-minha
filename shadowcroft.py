@@ -34,10 +34,10 @@ FPS = 60
 # ═══════════════════════════════════════════════════════════════
 #  CONSTANTES DE FÍSICA E GAMEPLAY
 # ═══════════════════════════════════════════════════════════════
-GRAVITY        = 0.55    # Aceleração da gravidade por frame
-MAX_FALL_SPD   = 15      # Velocidade máxima de queda
-PLAYER_SPD     = 4.8     # Velocidade horizontal do jogador
-JUMP_FORCE     = -13.5   # Força inicial do pulo
+GRAVITY        = 0.65    # Aceleração da gravidade por frame
+MAX_FALL_SPD   = 16      # Velocidade máxima de queda
+PLAYER_SPD     = 5.5     # Velocidade horizontal do jogador
+JUMP_FORCE     = -14.5   # Força inicial do pulo
 JUMP_HOLD_MULT = 0.55    # Multiplicador ao segurar o pulo
 ATTACK_DUR     = 20      # Frames que o hitbox de ataque fica ativo
 ATTACK_CD      = 35      # Frames de cooldown entre ataques
@@ -221,9 +221,10 @@ class Platform:
     Plataforma sólida do mundo.
     Suporta variações de cor para criar profundidade visual.
     """
-    def __init__(self, x: int, y: int, w: int, h: int, variant: int = 0):
+    def __init__(self, x: int, y: int, w: int, h: int, variant: int = 0, hazard: bool = False):
         self.rect = pygame.Rect(x, y, w, h)
         self.variant = variant  # 0=normal, 1=pedra, 2=raiz orgânica
+        self.hazard = hazard    # Espinhos/perigo
 
     def draw(self, surface, cam_x: int, cam_y: int):
         rx = self.rect.x - cam_x
@@ -243,10 +244,17 @@ class Platform:
         pygame.draw.rect(surface, C_PLT_EDGE, (rx + rw - 2, ry, 2, rh))
 
         # Topo destacado (onde o player pisa)
-        pygame.draw.rect(surface, C_PLT_TOP, (rx, ry, rw, 3))
+        top_col = (255, 50, 50) if self.hazard else C_PLT_TOP
+        pygame.draw.rect(surface, top_col, (rx, ry, rw, 3))
 
         # Linha de brilho sutil no topo
         pygame.draw.rect(surface, C_PLT_GLOW, (rx + 1, ry + 1, rw - 2, 1))
+
+        if self.hazard:
+            # Desenha "espinhos" simples
+            for i in range(0, rw, 10):
+                pts = [(rx + i, ry), (rx + i + 5, ry - 8), (rx + i + 10, ry)]
+                pygame.draw.polygon(surface, (200, 30, 30), pts)
 
         # Detalhes visuais por variante
         if self.variant == 1:
@@ -663,17 +671,19 @@ class Boss(Enemy):
 
         if self.state != self.DEAD and dist < 600:
             # Padrão de ataque: rajada circular
-            if self.phase_timer % 120 == 0:
-                for angle in range(0, 360, 45):
+            if self.phase_timer % 100 == 0:
+                for angle in range(0, 360, 30):
                     rad = math.radians(angle)
-                    pvx, pvy = math.cos(rad) * 5, math.sin(rad) * 5
+                    pvx, pvy = math.cos(rad) * 4, math.sin(rad) * 4
                     projectiles.append(Projectile(self.rect.centerx, self.rect.centery, pvx, pvy))
 
-            # Tiro direcionado
+            # Tiro direcionado (apenas se tiver cooldown e player estiver perto)
             if self.shoot_cd == 0:
                 angle = math.atan2(dy, dx)
-                projectiles.append(Projectile(self.rect.centerx, self.rect.centery, math.cos(angle)*8, math.sin(angle)*8))
-                self.shoot_cd = 40
+                # Mais rápido conforme HP diminui
+                speed = 7 + (1 - self.hp/self.max_hp) * 5
+                projectiles.append(Projectile(self.rect.centerx, self.rect.centery, math.cos(angle)*speed, math.sin(angle)*speed))
+                self.shoot_cd = max(20, 50 - int((1 - self.hp/self.max_hp) * 30))
 
     def draw(self, surface, cam_x, cam_y):
         if self.state == self.DEAD and self.dead_timer > 20: return
@@ -766,10 +776,11 @@ class Player:
         if move != 0:
             self.facing = move
             target_vx = move * PLAYER_SPD
-            self.vx = lerp(self.vx, target_vx, 0.25)
+            # Aceleração mais responsiva
+            self.vx = lerp(self.vx, target_vx, 0.35 if self.on_ground else 0.2)
         else:
-            # Desaceleração mais rápida
-            self.vx = lerp(self.vx, 0, 0.3)
+            # Desaceleração mais seca para precisão
+            self.vx = lerp(self.vx, 0, 0.45 if self.on_ground else 0.1)
             if abs(self.vx) < 0.1:
                 self.vx = 0
 
@@ -1132,10 +1143,13 @@ class Switch:
         self.active = False
         self.color = (255, 100, 100)
 
-    def update(self, player):
+    def update(self, player, particles):
         if not self.active and player.is_attacking and self.rect.colliderect(player.attack_rect):
             self.active = True
             self.color = (100, 255, 100)
+            # Burst de partículas para feedback
+            for _ in range(15):
+                particles.append(Particle(self.rect.centerx, self.rect.centery, palette="soul"))
             return True
         return False
 
@@ -1167,6 +1181,45 @@ class Gate:
         pygame.draw.rect(surface, (100, 100, 120), (rx, ry, self.rect.w, self.rect.h))
         for i in range(0, self.rect.h, 10):
             pygame.draw.line(surface, (50, 50, 60), (rx, ry + i), (rx + self.rect.w, ry + i), 2)
+
+
+# ═══════════════════════════════════════════════════════════════
+#  CLASSE: MovingPlatform  —  plataforma móvel
+# ═══════════════════════════════════════════════════════════════
+class MovingPlatform:
+    def __init__(self, x, y, w, h, dx, dy, speed=2):
+        self.rect = pygame.Rect(x, y, w, h)
+        self.start_pos = pygame.Vector2(x, y)
+        self.target_offset = pygame.Vector2(dx, dy)
+        self.speed = speed
+        self.timer = 0
+
+    def update(self, player):
+        self.timer += 0.02
+        # Movimento senoidal suave
+        offset = (math.sin(self.timer) + 1) / 2
+        new_x = self.start_pos.x + self.target_offset.x * offset
+        new_y = self.start_pos.y + self.target_offset.y * offset
+
+        # Calcula vx/vy para carregar o player
+        vx = new_x - self.rect.x
+        vy = new_y - self.rect.y
+
+        self.rect.x = int(new_x)
+        self.rect.y = int(new_y)
+
+        # Se o player estiver em cima, move ele junto
+        foot_rect = pygame.Rect(player.rect.x, player.rect.bottom, player.rect.w, 2)
+        if foot_rect.colliderect(self.rect) and player.vy >= 0:
+            player.rect.x += int(vx)
+            player.rect.y = self.rect.top - player.rect.h
+            player.on_ground = True
+            player.vy = 0
+
+    def draw(self, surface, cam_x, cam_y):
+        rx, ry = self.rect.x - cam_x, self.rect.y - cam_y
+        pygame.draw.rect(surface, (100, 150, 200), (rx, ry, self.rect.w, self.rect.h))
+        pygame.draw.rect(surface, C_WHITE, (rx, ry, self.rect.w, self.rect.h), 2)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1212,8 +1265,9 @@ class HUD:
 
     def update(self, player: Player):
         self.msg_timer = max(0, self.msg_timer - 1)
+        self.shake = max(0, self.shake - 1)
         if player.flash_timer > 0:
-            self.shake = 6
+            self.shake = 8
 
     def draw(self, surface, player: Player, debug: bool = False):
         # --- Vida (almas) ---
@@ -1280,12 +1334,11 @@ class HUD:
                          title.get_width() + 20, 70), glow_a // 4)
         surface.blit(title, (SCREEN_W // 2 - title.get_width() // 2, SCREEN_H // 2 - 60))
 
-        sub = font_sub.render("Pressione qualquer tecla para começar", True, C_UI_TEXT)
+        sub = font_sub.render("Explore as sombras. Domine o combate.", True, C_UI_TEXT)
         surface.blit(sub, (SCREEN_W // 2 - sub.get_width() // 2, SCREEN_H // 2 + 30))
 
-        hint = font_sub.render("Pressione qualquer tecla para continuar", True,
-                                (130, 120, 170))
-        surface.blit(hint, (SCREEN_W // 2 - hint.get_width() // 2, SCREEN_H // 2 + 70))
+        btn_txt = font_sub.render("[ CLIQUE PARA COMEÇAR ]", True, C_SOUL_A)
+        surface.blit(btn_txt, (SCREEN_W // 2 - btn_txt.get_width() // 2, SCREEN_H // 2 + 80))
 
     def draw_level_select(self, surface, unlocked, souls, health_upgrades):
         """Menu de seleção de fases e dificuldade. Retorna lista de (rect, action, value)."""
@@ -1334,7 +1387,7 @@ class HUD:
 def build_level(level_id=1, difficulty=1.0):
     """
     Cria as plataformas, inimigos, checkpoints, orbes, objetivos e mecanismos.
-    Retorna (platforms, enemies, checkpoints, orbs, goal, switches, gates, world_w, world_h).
+    Retorna (platforms, enemies, checkpoints, orbs, goal, switches, gates, m_platforms, world_w, world_h).
     """
     platforms: List[Platform]   = []
     enemies:   List[Enemy]      = []
@@ -1342,70 +1395,73 @@ def build_level(level_id=1, difficulty=1.0):
     orbs: List[HealthOrb] = []
     switches: List[Switch] = []
     gates: List[Gate] = []
+    m_platforms: List[MovingPlatform] = []
 
-    world_w = 2000 + level_id * 1000
-    world_h = 900
+    world_w = 2000 + level_id * 800
+    world_h = 800
 
-    # Chão base (com abismos para dificultar)
-    for i in range(0, world_w, 800):
-        platforms.append(Platform(i, 600, 600, 40))
-
-    # Paredes
     platforms.append(Platform(-40, 0, 40, world_h))
     platforms.append(Platform(world_w, 0, 40, world_h))
+    platforms.append(Platform(0, 600, 400, 40))
 
     if level_id == 1:
-        # Level 1: Introdução ao combate e orbes
-        platforms.append(Platform(400, 500, 300, 30))
-        enemies.append(Enemy(450, 450, max_hp=int(3*difficulty)))
-        platforms.append(Platform(800, 420, 200, 30))
-        orbs.append(HealthOrb(850, 350))
-        enemies.append(Enemy(1100, 550, max_hp=int(4*difficulty)))
-        goal = LevelGoal(world_w - 150, 520)
+        # Level 1: Introdução Suave
+        platforms.append(Platform(450, 520, 200, 30))
+        platforms.append(Platform(750, 480, 200, 30))
+        enemies.append(Enemy(800, 440, max_hp=int(3*difficulty)))
+        platforms.append(Platform(1050, 550, 250, 30))
+        orbs.append(HealthOrb(1100, 480))
+        platforms.append(Platform(1400, 580, world_w - 1400, 40))
+        goal = LevelGoal(world_w - 120, 500)
 
     elif level_id == 2:
-        # Level 2: Introdução a inimigos que atiram
-        platforms.append(Platform(300, 500, 200, 30))
-        enemies.append(ShootingEnemy(350, 450, max_hp=int(2*difficulty)))
-        platforms.append(Platform(700, 400, 200, 30))
-        platforms.append(Platform(1000, 500, 300, 30))
-        enemies.append(Enemy(1100, 450, max_hp=int(5*difficulty)))
-        orbs.append(HealthOrb(750, 330))
-        goal = LevelGoal(world_w - 150, 520)
+        # Level 2: Introdução a Moving Platforms
+        m_platforms.append(MovingPlatform(450, 520, 120, 25, 150, 0))
+        platforms.append(Platform(750, 450, 200, 30))
+        enemies.append(ShootingEnemy(800, 400, max_hp=int(2*difficulty)))
+        m_platforms.append(MovingPlatform(1050, 500, 120, 25, 0, -150))
+        platforms.append(Platform(1300, 320, 250, 30, hazard=True))
+        orbs.append(HealthOrb(1400, 250))
+        platforms.append(Platform(1650, 500, world_w - 1650, 40))
+        goal = LevelGoal(world_w - 120, 420)
 
     elif level_id == 3:
-        # Level 3: Primeiro Puzzle (Switch e Gate)
-        switches.append(Switch(400, 550))
-        gates.append(Gate(800, 400, 40, 200))
-        platforms.append(Platform(1000, 450, 400, 30))
-        enemies.append(ShootingEnemy(1100, 400, max_hp=int(3*difficulty)))
-        orbs.append(HealthOrb(400, 450))
-        goal = LevelGoal(world_w - 150, 520)
+        # Level 3: Puzzle e Combate Ranged
+        switches.append(Switch(450, 550))
+        gates.append(Gate(700, 250, 40, 400))
+        platforms.append(Platform(400, 380, 200, 30))
+        enemies.append(ShootingEnemy(450, 320, max_hp=int(3*difficulty)))
+        m_platforms.append(MovingPlatform(800, 450, 150, 25, 200, 0))
+        platforms.append(Platform(1150, 350, 200, 30, hazard=True))
+        orbs.append(HealthOrb(1250, 280))
+        platforms.append(Platform(1500, 550, world_w - 1500, 40))
+        goal = LevelGoal(world_w - 120, 470)
 
     elif level_id == 4:
-        # Level 4: Plataformas flutuantes e combate intenso
-        for i in range(6):
-            px, py = 400 + i * 400, 500 - (i % 2) * 150
+        # Level 4: "Ascensão" (Desafio de pulo)
+        for i in range(12):
+            px, py = 450 + i * 220, 550 - (i % 4) * 80
             platforms.append(Platform(px, py, 150, 30))
-            if i % 2 == 0:
-                enemies.append(ShootingEnemy(px + 30, py - 50, max_hp=int(3*difficulty)))
-            else:
-                enemies.append(Enemy(px + 30, py - 50, max_hp=int(6*difficulty)))
-        orbs.append(HealthOrb(world_w // 2, 200))
-        goal = LevelGoal(world_w - 150, 520)
+            if i % 3 == 0:
+                enemies.append(ShootingEnemy(px + 40, py - 50, max_hp=int(4*difficulty)))
+            if i < 11:
+                platforms.append(Platform(px + 180, py + 120, 40, 15, hazard=True))
+        platforms.append(Platform(world_w - 400, 500, 400, 40))
+        goal = LevelGoal(world_w - 120, 420)
 
     else:
-        # Level 5: O Grande Boss
-        platforms.append(Platform(200, 500, 400, 40))
-        platforms.append(Platform(800, 400, 400, 30))
-        platforms.append(Platform(1400, 500, 400, 40))
-        # O Boss fica no centro de uma arena grande
-        enemies.append(Boss(world_w // 2, 450, max_hp=int(40*difficulty)))
-        orbs.append(HealthOrb(200, 400))
-        orbs.append(HealthOrb(world_w - 400, 400))
-        goal = LevelGoal(world_w - 150, 520)
+        # Level 5: Arena do Boss Final
+        platforms.append(Platform(400, 500, 300, 30))
+        m_platforms.append(MovingPlatform(800, 400, 200, 25, 0, 150))
+        platforms.append(Platform(1200, 550, 1200, 40)) # Chão da Arena
+        enemies.append(Boss(1600, 450, max_hp=int(60*difficulty)))
+        platforms.append(Platform(1300, 380, 150, 20))
+        platforms.append(Platform(2100, 380, 150, 20))
+        orbs.append(HealthOrb(1350, 320))
+        orbs.append(HealthOrb(2150, 320))
+        goal = LevelGoal(world_w - 120, 470)
 
-    return platforms, enemies, checkpoints, orbs, goal, switches, gates, world_w, world_h
+    return platforms, enemies, checkpoints, orbs, goal, switches, gates, m_platforms, world_w, world_h
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1439,7 +1495,7 @@ class Game:
     def _init_game(self):
         """(Re)inicializa todos os objetos do jogo."""
         (self.platforms, self.enemies, self.checkpoints, self.orbs,
-         self.goal, self.switches, self.gates, self.world_w, self.world_h) = build_level(self.current_level, self.difficulty)
+         self.goal, self.switches, self.gates, self.m_platforms, self.world_w, self.world_h) = build_level(self.current_level, self.difficulty)
         self.player = Player(80, 520, max_hp=5 + self.health_upgrades)
         self.projectiles = []
         self.camera = Camera(self.world_w, self.world_h)
@@ -1490,9 +1546,18 @@ class Game:
         self.player.handle_input(keys)
         self.player.apply_gravity()
 
+        # Plataformas Móveis (update antes da colisão)
+        for mp in self.m_platforms:
+            mp.update(self.player)
+
         # Merge platforms and active gates
         active_colliders = self.platforms + [g for g in self.gates if not g.open]
         self.player.move_and_collide(active_colliders)
+
+        # Hazard check
+        for p in self.platforms:
+            if p.hazard and self.player.rect.colliderect(p.rect):
+                self.player.take_damage(1, p.rect.centerx)
         self.player.update(self.platforms, self.checkpoints, self.enemies)
 
         # Projectiles
@@ -1503,7 +1568,7 @@ class Game:
         # Switches and Gates
         switch_active = any(s.active for s in self.switches)
         for s in self.switches:
-            s.update(self.player)
+            s.update(self.player, self.player.particles)
         for g in self.gates:
             g.update(switch_active)
 
@@ -1513,6 +1578,9 @@ class Game:
                 self.unlocked_levels = max(self.unlocked_levels, self.current_level + 1)
                 self.state = self.STATE_LEVEL_SELECT
                 self.hud.show_message(f"Level {self.current_level} Completo!", 120)
+            else:
+                self.hud.show_message("PARABÉNS! JOGO CONCLUÍDO!", 180)
+                self.state = self.STATE_LEVEL_SELECT
 
         # Morreu ao cair no abismo
         if self.player.rect.top > self.world_h + 100 and not self.player.is_dead:
@@ -1559,6 +1627,11 @@ class Game:
         cam_x = self.camera.ix
         cam_y = self.camera.iy
 
+        # Screenshake
+        if self.hud.shake > 0:
+            cam_x += random.randint(-self.hud.shake, self.hud.shake)
+            cam_y += random.randint(-self.hud.shake, self.hud.shake)
+
         # Tela de início
         if self.state == self.STATE_START:
             self.hud.draw_start_screen(screen)
@@ -1592,6 +1665,10 @@ class Game:
 
         # Goal
         self.goal.draw(screen, cam_x, cam_y)
+
+        # Moving Platforms
+        for mp in self.m_platforms:
+            mp.draw(screen, cam_x, cam_y)
 
         # Switches and Gates
         for s in self.switches:
