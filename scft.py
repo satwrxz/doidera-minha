@@ -30,7 +30,7 @@ NOVIDADES v2:
   - Sinal de aggro "!" sobre inimigos
 """
 
-import pygame, sys, math, random
+import pygame, sys, math, random, json, os
 from typing import List, Optional
 
 pygame.init()
@@ -1768,7 +1768,33 @@ class Game:
         self.menu_clickables= []
         self.hud = HUD()
         self.bg  = self._make_bg()
+        self.load_game()
         self._init_game()
+
+    def save_game(self):
+        data = {
+            "unlocked": self.unlocked,
+            "souls": self.souls,
+            "health_upgrades": self.health_upgrades,
+            "difficulty": self.difficulty
+        }
+        try:
+            with open("save_data.json", "w") as f:
+                json.dump(data, f)
+        except Exception as e:
+            print(f"Erro ao salvar: {e}")
+
+    def load_game(self):
+        if os.path.exists("save_data.json"):
+            try:
+                with open("save_data.json", "r") as f:
+                    data = json.load(f)
+                    self.unlocked = data.get("unlocked", 1)
+                    self.souls = data.get("souls", 0)
+                    self.health_upgrades = data.get("health_upgrades", 0)
+                    self.difficulty = data.get("difficulty", 1.0)
+            except Exception as e:
+                print(f"Erro ao carregar: {e}")
 
     def _init_game(self):
         result = build_level(self.current_level, self.difficulty)
@@ -1897,6 +1923,7 @@ class Game:
                 self.hud.show_message(f"✦ Fase {self.current_level} Concluída! ✦",140)
             else:
                 self.hud.show_message("PARABÉNS! JOGO CONCLUÍDO!", 300)
+            self.save_game()
             self.state=self.S_SELECT
 
         # Morte por queda
@@ -2017,6 +2044,7 @@ class Game:
 
     def _set_diff(self,val,label):
         self.difficulty=val; self.hud.show_message(f"Dificuldade: {label}",70)
+        self.save_game()
 
     def _buy_upgrade(self):
         cost=30+self.health_upgrades*20
@@ -2024,6 +2052,7 @@ class Game:
             self.souls-=cost; self.health_upgrades+=1
             self.player.max_hp+=1; self.player.hp=self.player.max_hp
             self.hud.show_message(f"HP Máximo UP! ({self.player.max_hp})",90)
+            self.save_game()
         else:
             self.hud.show_message(f"Almas insuficientes! (precisa {cost})",70)
 
