@@ -477,15 +477,16 @@ class Enemy:
             if self.attack_timer >= 28:
                 self.state=self.CHASE; self.attack_cd=65
 
-        # Borda de plataforma: NUNCA pula, só vira — corrige o bug de cair
-        if self.on_ground and self.state in (self.PATROL, self.CHASE):
+        if self.on_ground and self.state in (self.PATROL, self.CHASE, self.ATTACK):
             look_x = self.rect.right+2 if self.facing==1 else self.rect.left-6
             foot_rect = pygame.Rect(look_x, self.rect.bottom, 4, 4)
             on_edge = not any(p.rect.colliderect(foot_rect) for p in platforms)
             if on_edge:
-                self.facing *= -1
-                self.vx = self.patrol_spd * self.facing
-
+                if self.state == self.PATROL:
+                    self.facing *= -1
+                    self.vx = self.patrol_spd * self.facing
+                else:
+                    self.vy = JUMP_FORCE; self.on_ground = False
         self.vy = min(self.vy+GRAVITY, MAX_FALL)
         self.rect.x += int(self.vx);  self._collide_x(platforms)
         self.rect.y += int(self.vy);  self._collide_y(platforms)
@@ -746,7 +747,7 @@ class Boss(Enemy):
         self.phase     = 1
         self.phase_timer=0
         self.shoot_cd  = 0
-        self.glow      = 0
+        self.glow_intensity      = 0
         self.stomp_cd  = 0
         self.enraged   = False
 
@@ -759,7 +760,7 @@ class Boss(Enemy):
         self.phase_timer+=1
         self.shoot_cd=max(0,self.shoot_cd-1)
         self.stomp_cd=max(0,self.stomp_cd-1)
-        self.glow    =max(0,self.glow-4)
+        self.glow_intensity    =max(0,self.glow_intensity-4)
 
         hp_pct = self.hp/self.max_hp
         self.phase = 1 if hp_pct>0.60 else (2 if hp_pct>0.30 else 3)
@@ -787,7 +788,7 @@ class Boss(Enemy):
 
         # Telegraphing: brilha antes dos ataques
         if cycle > max(100,160-self.phase*20):
-            self.glow = min(255, self.glow+6)
+            self.glow_intensity = min(255, self.glow_intensity+6)
 
         # Fase 1+: Rajada circular (ciclo 0)
         if cycle==0 and self.shoot_cd==0:
@@ -797,7 +798,7 @@ class Boss(Enemy):
                 spd_p = 5+self.phase*0.5
                 projectiles.append(Projectile(self.rect.centerx,self.rect.centery,
                                               math.cos(ang)*spd_p,math.sin(ang)*spd_p))
-            self.glow=255; self.shoot_cd=20
+            self.glow_intensity=255; self.shoot_cd=20
 
         # Fase 2+: Triplo tiro direcionado
         if self.phase>=2 and cycle in (60,80,100) and self.shoot_cd==0:
@@ -808,7 +809,7 @@ class Boss(Enemy):
                 a=angle+s
                 projectiles.append(Projectile(self.rect.centerx,self.rect.centery,
                                               math.cos(a)*speed,math.sin(a)*speed))
-            self.glow=180; self.shoot_cd=12
+            self.glow_intensity=180; self.shoot_cd=12
 
         # Fase 3: Chuva de projéteis do céu
         if self.phase>=3 and cycle>110 and cycle%9==0:
@@ -857,8 +858,8 @@ class Boss(Enemy):
         draw_circle_alpha(surf,aura_col,(rx+w//2,ry+h//2),60+bob,40)
 
         # Telegraphing glow
-        if self.glow>0:
-            draw_circle_alpha(surf,(255,80,80),(rx+w//2,ry+h//2),80,self.glow//3)
+        if self.glow_intensity>0:
+            draw_circle_alpha(surf,(255,80,80),(rx+w//2,ry+h//2),80,self.glow_intensity//3)
 
         # Corpo
         pygame.draw.rect(surf,(60,15,35),(rx,ry+bob,w,h),border_radius=12)
@@ -1244,7 +1245,7 @@ class Camera:
 # ═══════════════════════════════════════════════════════════════════
 class Switch:
     def __init__(self,x,y):
-        self.rect=pygame.Rect(x,y,36,36); self.active=False
+        self.rect=pygame.Rect(x,y,40,40); self.active=False
     def update(self,player,particles):
         if not self.active and player.is_attacking and self.rect.colliderect(player.attack_rect):
             self.active=True
@@ -1265,7 +1266,7 @@ class Gate:
         self.rect=pygame.Rect(x,y,w,h); self.open=False; self.y_start=y
     def update(self,is_active):
         if is_active and not self.open:
-            self.rect.y-=5
+            self.rect.y-=10
             if self.rect.y<self.y_start-self.rect.h: self.open=True
     def draw(self,surf,cx,cy):
         if self.open: return
@@ -1288,7 +1289,7 @@ class MovingPlatform:
         ny=self.start_pos.y+self.target_offset.y*o
         vx=nx-self.rect.x; vy=ny-self.rect.y
         self.rect.x=int(nx); self.rect.y=int(ny)
-        foot=pygame.Rect(player.rect.x,player.rect.bottom,player.rect.w,5)
+        foot=pygame.Rect(player.rect.x,player.rect.bottom,player.rect.w,4)
         if foot.colliderect(self.rect) and player.vy>=-1:
             player.rect.x+=int(vx); player.rect.y=self.rect.top-player.rect.h
             player.on_ground=True; player.vy=0
@@ -1457,7 +1458,7 @@ class HUD:
 def build_level(level_id=1, difficulty=1.0):
     """
     Retorna (platforms, enemies, checkpoints, orbs, goal,
-             switches, gates, m_platforms, soul_drops_spawns, world_w, world_h, level_name)
+             switches, gates, m_platforms, world_w, world_h, level_name)
     """
     platforms:   List[Platform]       = []
     enemies:     List               = []
@@ -1476,276 +1477,249 @@ def build_level(level_id=1, difficulty=1.0):
 
     # ── LEVEL 1: O Início — tutorial suave ───────────────────
     if level_id == 1:
-        world_w, world_h = 3000, 760
+        world_w, world_h = 4000, 900
         level_name = "I — O Início"
         add_walls(world_w, world_h)
 
         # Zona 1: Chão plano + intro inimigos
-        platforms.append(Platform(  0, 600, 700, 40, 0))
-        platforms.append(Platform(600, 540, 120, 24, 2))  # plataforma flutuante
-        platforms.append(Platform(780, 600, 500, 40, 1))
+        platforms.append(Platform(  0, 600, 800, 40, 0))
+        platforms.append(Platform(800, 540, 150, 24, 2))
+        platforms.append(Platform(1050, 600, 600, 40, 1))
 
-        enemies.append(Enemy(260, 560, 80, hp(3)))
-        enemies.append(Enemy(480, 560, 80, hp(3)))
-        enemies.append(FlyingEnemy(550, 520, hp(2), float_height=460))
+        enemies.append(Enemy(300, 560, 100, hp(3)))
+        enemies.append(Enemy(600, 560, 100, hp(3)))
+        enemies.append(FlyingEnemy(850, 500, hp(2), float_height=440))
 
-        checkpoints.append(Checkpoint(700, 554))
+        checkpoints.append(Checkpoint(1000, 554))
 
-        # Zona 2: Pulo para cima + mais inimigos
-        platforms.append(Platform( 900, 520, 180, 24, 2))
-        platforms.append(Platform(1100, 460, 160, 24, 0))
-        platforms.append(Platform(1300, 530, 400, 30, 1))
+        # Zona 2: Escalada suave
+        platforms.append(Platform(1750, 520, 200, 24, 2))
+        platforms.append(Platform(2050, 460, 200, 24, 0))
+        platforms.append(Platform(2350, 530, 500, 30, 1))
 
-        enemies.append(Enemy( 950, 480, 70, hp(3)))
-        enemies.append(Enemy(1140, 420, 60, hp(3)))
-        enemies.append(Enemy(1360, 490, 80, hp(4)))
-        enemies.append(FlyingEnemy(1250, 460, hp(2), float_height=380))
+        enemies.append(Enemy(1800, 480, 80, hp(3)))
+        enemies.append(Enemy(2100, 420, 80, hp(3)))
+        enemies.append(Enemy(2450, 490, 100, hp(4)))
+        enemies.append(FlyingEnemy(2200, 440, hp(2), float_height=360))
 
-        orbs.append(HealthOrb(1150, 390))
+        orbs.append(HealthOrb(2100, 390))
 
-        # Zona 3: Descida + mais ação
-        platforms.append(Platform(1750, 590, 500, 40, 0))
-        platforms.append(Platform(1850, 510, 120, 24, 2))
-        platforms.append(Platform(2050, 450, 160, 24, 1))
-        platforms.append(Platform(2280, 590, 680, 40, 0))
+        # Zona 3: Expansão final
+        platforms.append(Platform(2950, 600, 400, 40, 0))
+        platforms.append(Platform(3200, 510, 150, 24, 2))
+        platforms.append(Platform(3450, 450, 200, 24, 1))
+        platforms.append(Platform(3700, 600, 300, 40, 0))
 
-        enemies.append(Enemy(1800, 550, 100, hp(3)))
-        enemies.append(Enemy(1960, 550, 100, hp(4)))
-        enemies.append(Enemy(2100, 410, 60, hp(3)))
-        enemies.append(FlyingEnemy(2150, 410, hp(2), float_height=360))
-        enemies.append(Enemy(2350, 550, 120, hp(4)))
-        enemies.append(Enemy(2550, 550, 120, hp(4)))
+        enemies.append(Enemy(3000, 560, 120, hp(4)))
+        enemies.append(Enemy(3100, 560, 120, hp(4)))
+        enemies.append(Enemy(3500, 410, 80, hp(3)))
+        enemies.append(FlyingEnemy(3600, 410, hp(2), float_height=350))
 
-        checkpoints.append(Checkpoint(2000, 424))
-        orbs.append(HealthOrb(2100, 380))
+        checkpoints.append(Checkpoint(2900, 524))
+        orbs.append(HealthOrb(3500, 380))
 
-        goal = LevelGoal(2880, 514)
+        goal = LevelGoal(3850, 524)
 
-    # ── LEVEL 2: Plataformas — corrigido, sem espinhos duplos ─
+    # ── LEVEL 2: Plataformas ─────────────────────────────────
     elif level_id == 2:
-        world_w, world_h = 3400, 760
+        world_w, world_h = 4500, 900
         level_name = "II — Plataformas"
         add_walls(world_w, world_h)
 
         # Zona 1: Intro moving platforms
-        platforms.append(Platform(  0, 600, 400, 40, 0))
-        enemies.append(Enemy(180, 560, 80, hp(3)))
-        enemies.append(Enemy(300, 560, 60, hp(3)))
-        enemies.append(FlyingEnemy(350, 480, hp(2), float_height=420))
+        platforms.append(Platform(  0, 600, 500, 40, 0))
+        enemies.append(Enemy(200, 560, 100, hp(3)))
+        enemies.append(Enemy(350, 560, 80, hp(3)))
+        enemies.append(FlyingEnemy(450, 480, hp(2), float_height=420))
 
         # Moving platform 1 (horizontal)
-        m_plats.append(MovingPlatform(450, 560, 130, 22, 220, 0))
-        platforms.append(Platform(700, 580, 300, 40, 1))
-        enemies.append(ShootingEnemy(780, 540, 70, hp(2)))
-        enemies.append(Enemy(850, 540, 60, hp(3)))
-        checkpoints.append(Checkpoint(760, 556))
+        m_plats.append(MovingPlatform(600, 560, 150, 22, 300, 0))
+        platforms.append(Platform(1000, 580, 400, 40, 1))
+        enemies.append(ShootingEnemy(1100, 540, 80, hp(2)))
+        enemies.append(Enemy(1250, 540, 80, hp(3)))
+        checkpoints.append(Checkpoint(1050, 556))
 
-        # Zona 2: Moving platform vertical + espinhos (UM só, bem sinalizado)
-        platforms.append(Platform(1050, 540, 200, 30, 2))
-        m_plats.append(MovingPlatform(1300, 540, 130, 22, 0, -180))
-        platforms.append(Platform(1500, 560, 180, 30, 0))
+        # Zona 2: Moving platform vertical + espinhos
+        platforms.append(Platform(1500, 540, 250, 30, 2))
+        m_plats.append(MovingPlatform(1850, 540, 150, 22, 0, -200))
+        platforms.append(Platform(2100, 560, 300, 30, 0))
 
-        # ESPINHOS: apenas uma plataforma, bem espaçada, com aviso temporizado
-        platforms.append(Platform(1720, 540, 200, 30, 1, hazard=True, hazard_timed=True, hazard_offset=0))
+        # ESPINHOS
+        platforms.append(Platform(2500, 540, 250, 30, 1, hazard=True, hazard_timed=True, hazard_offset=0))
+        platforms.append(Platform(2850, 560, 300, 30, 0))
 
-        enemies.append(Enemy(1100, 500, 70, hp(4)))
-        enemies.append(FlyingEnemy(1400, 420, hp(2), float_height=360))
-        enemies.append(ShootingEnemy(1550, 520, 60, hp(2)))
-        enemies.append(Enemy(1620, 500, 60, hp(3)))
+        enemies.append(Enemy(1600, 500, 80, hp(4)))
+        enemies.append(FlyingEnemy(1950, 420, hp(2), float_height=360))
+        enemies.append(ShootingEnemy(2150, 520, 80, hp(2)))
+        enemies.append(Enemy(2250, 500, 80, hp(3)))
 
-        orbs.append(HealthOrb(1550, 490))
-        checkpoints.append(Checkpoint(1550, 536))
+        orbs.append(HealthOrb(2150, 490))
+        checkpoints.append(Checkpoint(2150, 536))
 
-        # Zona 3: Combinação tudo
-        platforms.append(Platform(1980, 580, 300, 40, 0))
-        m_plats.append(MovingPlatform(2340, 540, 140, 22, 240, 0))
-        platforms.append(Platform(2640, 540, 280, 30, 2))
-        platforms.append(Platform(2980, 580, 380, 40, 0))
+        # Zona 3: Combinação final
+        platforms.append(Platform(3250, 580, 400, 40, 0))
+        m_plats.append(MovingPlatform(3750, 540, 160, 22, 300, 0))
+        platforms.append(Platform(4150, 540, 350, 40, 0))
 
-        enemies.append(Enemy(2020, 540, 90, hp(4)))
-        enemies.append(ShootingEnemy(2060, 540, 80, hp(3)))
-        enemies.append(FlyingEnemy(2400, 430, hp(2), float_height=370))
-        enemies.append(Enemy(2680, 500, 80, hp(4)))
-        enemies.append(ShootingEnemy(2720, 500, 70, hp(3)))
-        enemies.append(Enemy(3020, 540, 100, hp(4)))
-        enemies.append(Enemy(3150, 540, 100, hp(4)))
+        enemies.append(Enemy(3300, 540, 110, hp(4)))
+        enemies.append(ShootingEnemy(3450, 540, 100, hp(3)))
+        enemies.append(FlyingEnemy(3800, 430, hp(2), float_height=370))
+        enemies.append(Enemy(4200, 500, 100, hp(4)))
+        enemies.append(Enemy(4350, 500, 100, hp(4)))
 
-        orbs.append(HealthOrb(2680, 470))
-        checkpoints.append(Checkpoint(2700, 516))
-        goal = LevelGoal(3240, 504)
+        orbs.append(HealthOrb(4200, 470))
+        checkpoints.append(Checkpoint(4200, 516))
+        goal = LevelGoal(4380, 504)
 
-    # ── LEVEL 3: Puzzles — switches, portões, espinhos alternados ─
+    # ── LEVEL 3: Puzzles — switches, portões, espinhos ───────
     elif level_id == 3:
-        world_w, world_h = 3600, 800
+        world_w, world_h = 4800, 900
         level_name = "III — Puzzles"
         add_walls(world_w, world_h)
 
         # Zona 1: Intro + switch
-        platforms.append(Platform(  0, 620, 600, 40, 0))
-        platforms.append(Platform(600, 560, 300, 30, 1))
-        switches.append(Switch(700, 528))
-        gates.append(Gate(650, 340, 40, 220))
+        platforms.append(Platform(  0, 620, 550, 40, 0))
+        platforms.append(Platform(550, 560, 200, 30, 1))
+        switches.append(Switch(600, 520))
+        gates.append(Gate(1100, 300, 50, 300))
+        platforms.append(Platform(850, 540, 250, 30, 0))
 
-        enemies.append(Enemy(200, 580, 80, hp(3)))
-        enemies.append(Enemy(360, 580, 80, hp(3)))
-        enemies.append(FlyingEnemy(450, 500, hp(2), float_height=440))
-        enemies.append(Enemy(720, 520, 60, hp(4)))
-        checkpoints.append(Checkpoint(580, 576))
+        enemies.append(Enemy(200, 580, 100, hp(3)))
+        enemies.append(Enemy(400, 580, 100, hp(3)))
+        enemies.append(FlyingEnemy(500, 500, hp(2), float_height=440))
+        checkpoints.append(Checkpoint(500, 576))
 
-        # Zona 2: Após gate, espinhos alternados com offsets diferentes
-        platforms.append(Platform(730, 560, 350, 30, 2))
-        # Dois espinhos com offsets bem separados (nunca ativos juntos)
-        platforms.append(Platform(1100, 540, 150, 28, 1, hazard=True, hazard_timed=True, hazard_offset=0))
-        platforms.append(Platform(1300, 540, 150, 28, 1, hazard=True, hazard_timed=True, hazard_offset=60))
-        platforms.append(Platform(1500, 600, 300, 40, 0))
+        # Zona 2: Após gate
+        platforms.append(Platform(1200, 560, 400, 30, 2))
+        platforms.append(Platform(1700, 540, 200, 28, 1, hazard=True, hazard_timed=True, hazard_offset=0))
+        platforms.append(Platform(2000, 540, 200, 28, 1, hazard=True, hazard_timed=True, hazard_offset=60))
+        platforms.append(Platform(2300, 600, 400, 40, 0))
 
-        enemies.append(ShootingEnemy(800, 520, 80, hp(3)))
-        enemies.append(Enemy(900, 520, 60, hp(4)))
-        enemies.append(ShootingEnemy(1150, 500, 60, hp(3)))
-        enemies.append(FlyingEnemy(1300, 430, hp(2), float_height=380))
-        enemies.append(Enemy(1550, 560, 80, hp(4)))
+        enemies.append(ShootingEnemy(1300, 520, 100, hp(3)))
+        enemies.append(Enemy(1450, 520, 80, hp(4)))
+        enemies.append(ShootingEnemy(1750, 500, 80, hp(3)))
+        enemies.append(FlyingEnemy(2100, 430, hp(2), float_height=380))
+        enemies.append(Enemy(2400, 560, 100, hp(4)))
 
-        orbs.append(HealthOrb(1400, 470))
-        checkpoints.append(Checkpoint(1200, 516))
+        orbs.append(HealthOrb(2100, 470))
+        checkpoints.append(Checkpoint(2200, 516))
 
-        # Zona 3: Moving platforms + combinação
-        m_plats.append(MovingPlatform(1850, 540, 140, 22, 0, -160))
-        platforms.append(Platform(2050, 580, 320, 40, 0))
-        m_plats.append(MovingPlatform(2430, 560, 130, 22, 180, 0))
-        platforms.append(Platform(2660, 560, 300, 30, 2))
-        platforms.append(Platform(3020, 600, 540, 40, 0))
+        # Zona 3: Moving platforms e abismo expandido
+        m_plats.append(MovingPlatform(2800, 540, 160, 22, 0, -200))
+        platforms.append(Platform(3100, 580, 400, 40, 0))
+        m_plats.append(MovingPlatform(3600, 560, 150, 22, 300, 0))
+        platforms.append(Platform(4000, 560, 400, 30, 2))
+        platforms.append(Platform(4500, 600, 300, 40, 0))
 
-        enemies.append(Enemy(1900, 500, 80, hp(4)))
-        enemies.append(ShootingEnemy(2080, 540, 80, hp(3)))
-        enemies.append(FlyingEnemy(2300, 430, hp(3), float_height=370))
-        enemies.append(Enemy(2480, 520, 70, hp(4)))
-        enemies.append(Enemy(2700, 520, 80, hp(4)))
-        enemies.append(ShootingEnemy(2800, 520, 70, hp(3)))
-        enemies.append(Enemy(3060, 560, 120, hp(4)))
-        enemies.append(FlyingEnemy(3200, 480, hp(2), float_height=400))
-        enemies.append(Enemy(3300, 560, 100, hp(4)))
+        enemies.append(Enemy(3150, 500, 100, hp(4)))
+        enemies.append(ShootingEnemy(3300, 540, 100, hp(3)))
+        enemies.append(FlyingEnemy(3700, 430, hp(3), float_height=370))
+        enemies.append(Enemy(4100, 520, 100, hp(4)))
+        enemies.append(ShootingEnemy(4250, 520, 90, hp(3)))
+        enemies.append(Enemy(4600, 560, 120, hp(4)))
 
-        orbs.append(HealthOrb(2700, 490))
-        checkpoints.append(Checkpoint(2770, 536))
-        goal = LevelGoal(3450, 524)
+        orbs.append(HealthOrb(4100, 490))
+        checkpoints.append(Checkpoint(4100, 536))
+        goal = LevelGoal(4650, 524)
 
     # ── LEVEL 4: A Ascensão — desafio de pulo vertical ───────
     elif level_id == 4:
-        world_w, world_h = 4000, 900
+        world_w, world_h = 5200, 900
         level_name = "IV — A Ascensão"
         add_walls(world_w, world_h)
 
         # Zona baixa: intro
-        platforms.append(Platform(0, 700, 500, 40, 0))
-        enemies.append(Enemy(200, 660, 100, hp(4)))
-        enemies.append(Enemy(360, 660, 100, hp(4)))
-        enemies.append(FlyingEnemy(400, 570, hp(3), float_height=510))
-        checkpoints.append(Checkpoint(440, 676))
+        platforms.append(Platform(0, 700, 600, 40, 0))
+        enemies.append(Enemy(250, 660, 120, hp(4)))
+        enemies.append(Enemy(450, 660, 120, hp(4)))
+        enemies.append(FlyingEnemy(500, 570, hp(3), float_height=510))
+        checkpoints.append(Checkpoint(500, 676))
 
-        # Escadaria crescente
+        # Escadaria crescente (estendida)
         step_data = [
-            (600, 640, 180), (830, 580, 160), (1040, 520, 160),
-            (1250, 460, 150), (1460, 400, 150), (1680, 340, 160),
+            (700, 640, 200), (1000, 580, 180), (1300, 520, 180),
+            (1600, 460, 180), (1900, 400, 180), (2200, 340, 200),
         ]
         for idx,(sx,sy,sw) in enumerate(step_data):
             platforms.append(Platform(sx, sy, sw, 28, idx%3))
             if idx%2==0:
-                enemies.append(Enemy(sx+20, sy-38, 50, hp(4+idx//2)))
+                enemies.append(Enemy(sx+30, sy-38, 60, hp(4+idx//2)))
             if idx%3==1:
                 enemies.append(FlyingEnemy(sx+sw//2, sy-60, hp(3), float_height=sy-100))
-            # Espinhos entre degraus (apenas alguns, sem timed para não frustrar)
-            if idx in (1,3,5):
-                gap_x = sx+sw+10
-                gap_w = step_data[idx][0]-gap_x if idx<len(step_data)-1 else 60
-                if gap_w > 30:
-                    platforms.append(Platform(gap_x, sy+28, min(gap_w,80), 20, 1, hazard=True))
 
-        orbs.append(HealthOrb(1050, 450))
-        checkpoints.append(Checkpoint(1250, 432))
+        orbs.append(HealthOrb(1350, 450))
+        checkpoints.append(Checkpoint(1600, 432))
 
-        # Zona do topo: plataformas largas + horda
-        platforms.append(Platform(1900, 300, 600, 35, 0))
-        platforms.append(Platform(2100, 230, 200, 24, 2))
-        enemies.append(Enemy(1950, 260, 80, hp(5)))
-        enemies.append(ShootingEnemy(2000, 260, 80, hp(4)))
-        enemies.append(Enemy(2100, 190, 50, hp(4)))
-        enemies.append(FlyingEnemy(2250, 180, hp(3), float_height=120))
-        enemies.append(ShootingEnemy(2350, 260, 80, hp(4)))
-        enemies.append(Enemy(2450, 260, 80, hp(5)))
+        # Zona do topo: platô expandido
+        platforms.append(Platform(2500, 300, 800, 35, 0))
+        platforms.append(Platform(2800, 230, 250, 24, 2))
+        enemies.append(Enemy(2600, 260, 100, hp(5)))
+        enemies.append(ShootingEnemy(2750, 260, 100, hp(4)))
+        enemies.append(Enemy(2900, 190, 70, hp(4)))
+        enemies.append(FlyingEnemy(3100, 180, hp(3), float_height=120))
+        enemies.append(ShootingEnemy(3250, 260, 100, hp(4)))
 
-        checkpoints.append(Checkpoint(2200, 274))
-        orbs.append(HealthOrb(2100, 160))
+        checkpoints.append(Checkpoint(2700, 274))
+        orbs.append(HealthOrb(2850, 160))
 
-        # Descida final + combate intenso
-        platforms.append(Platform(2600, 380, 180, 26, 1))
-        m_plats.append(MovingPlatform(2840, 420, 140, 22, 0, 180))
-        platforms.append(Platform(3040, 550, 900, 40, 0))
+        # Descida final (estendida)
+        platforms.append(Platform(3500, 380, 250, 26, 1))
+        m_plats.append(MovingPlatform(3850, 420, 160, 22, 0, 250))
+        platforms.append(Platform(4100, 670, 1100, 45, 0))
 
-        enemies.append(Enemy(2650, 340, 60, hp(5)))
-        enemies.append(FlyingEnemy(2800, 300, hp(3), float_height=240))
-        enemies.append(ShootingEnemy(3080, 510, 100, hp(4)))
-        enemies.append(Enemy(3200, 510, 120, hp(5)))
-        enemies.append(ShootingEnemy(3350, 510, 100, hp(4)))
-        enemies.append(Enemy(3500, 510, 120, hp(5)))
-        enemies.append(FlyingEnemy(3600, 400, hp(3), float_height=340))
-        enemies.append(Enemy(3700, 510, 100, hp(5)))
-        enemies.append(ShootingEnemy(3820, 510, 80, hp(4)))
+        enemies.append(Enemy(3600, 340, 80, hp(5)))
+        enemies.append(FlyingEnemy(3900, 300, hp(3), float_height=240))
+        enemies.append(ShootingEnemy(4200, 630, 120, hp(4)))
+        enemies.append(Enemy(4400, 630, 150, hp(5)))
+        enemies.append(ShootingEnemy(4600, 630, 120, hp(4)))
+        enemies.append(Enemy(4800, 630, 150, hp(5)))
 
-        checkpoints.append(Checkpoint(3100, 526))
-        orbs.append(HealthOrb(3400, 470))
-        goal = LevelGoal(3880, 474)
+        checkpoints.append(Checkpoint(4200, 646))
+        orbs.append(HealthOrb(4600, 600))
+        goal = LevelGoal(5050, 594)
 
-    # ── LEVEL 5: O Boss Final — arena corrigida ───────────────
+    # ── LEVEL 5: O Boss Final ────────────────────────────────
     else:
-        world_w, world_h = 3800, 800
+        world_w, world_h = 4000, 900
         level_name = "V — O Boss Final"
         add_walls(world_w, world_h)
 
         # Corredor de chegada
-        platforms.append(Platform(  0, 640, 600, 40, 0))
-        enemies.append(Enemy(200, 600, 80, hp(4)))
-        enemies.append(ShootingEnemy(380, 600, 80, hp(3)))
-        enemies.append(FlyingEnemy(480, 520, hp(3), float_height=460))
-        checkpoints.append(Checkpoint(540, 616))
+        platforms.append(Platform(  0, 640, 700, 40, 0))
+        enemies.append(Enemy(300, 600, 100, hp(4)))
+        enemies.append(ShootingEnemy(500, 600, 100, hp(3)))
+        enemies.append(FlyingEnemy(600, 520, hp(3), float_height=460))
+        checkpoints.append(Checkpoint(600, 616))
 
         # Moving platform para cruzar abismo
-        m_plats.append(MovingPlatform(660, 620, 150, 22, 280, 0))
+        m_plats.append(MovingPlatform(800, 620, 180, 22, 350, 0))
 
         # Ante-sala
-        platforms.append(Platform(960, 640, 400, 40, 1))
-        enemies.append(Enemy(1020, 600, 80, hp(5)))
-        enemies.append(ShootingEnemy(1150, 600, 80, hp(4)))
-        enemies.append(Enemy(1280, 600, 60, hp(5)))
-        orbs.append(HealthOrb(1180, 570))
-        checkpoints.append(Checkpoint(1180, 616))
+        platforms.append(Platform(1250, 640, 500, 40, 1))
+        enemies.append(Enemy(1350, 600, 100, hp(5)))
+        enemies.append(ShootingEnemy(1500, 600, 100, hp(4)))
+        checkpoints.append(Checkpoint(1300, 616))
 
         # ── ARENA DO BOSS ─────────────────────────────────────
-        # Chão sólido e extenso — garante que o boss não caia
-        ARENA_X1, ARENA_X2 = 1400, 3600
+        ARENA_X1, ARENA_X2 = 1800, 3800
         platforms.append(Platform(ARENA_X1, 560, ARENA_X2-ARENA_X1, 45, 0))
+        platforms.append(Platform(ARENA_X1-40, 0, 40, 900))
+        platforms.append(Platform(ARENA_X2,    0, 40, 900))
 
-        # Paredes invisíveis laterais da arena (impedem saída do boss)
-        platforms.append(Platform(ARENA_X1-40, 0, 40, 900))   # parede esquerda arena
-        platforms.append(Platform(ARENA_X2,    0, 40, 900))   # parede direita arena
+        # Plataformas internas
+        platforms.append(Platform(2000, 470, 200, 22, 2))
+        platforms.append(Platform(2400, 410, 200, 22, 1))
+        platforms.append(Platform(2800, 470, 200, 22, 2))
+        platforms.append(Platform(3200, 410, 200, 22, 1))
 
-        # Plataformas internas para o player se esquivar
-        platforms.append(Platform(1550, 470, 200, 22, 2))
-        platforms.append(Platform(1950, 410, 200, 22, 1))
-        platforms.append(Platform(2350, 470, 200, 22, 2))
-        platforms.append(Platform(2750, 410, 200, 22, 1))
-        platforms.append(Platform(3150, 470, 200, 22, 2))
+        orbs.append(HealthOrb(2100, 400))
+        orbs.append(HealthOrb(2900, 400))
 
-        # HealthOrbs espalhados pela arena
-        orbs.append(HealthOrb(1600, 400))
-        orbs.append(HealthOrb(2500, 400))
-        orbs.append(HealthOrb(3200, 400))
-
-        # Boss (arena clamped a ARENA_X1+40..ARENA_X2-80)
-        boss = Boss(2400, 470, hp(35), arena_x1=ARENA_X1+20, arena_x2=ARENA_X2-20)
+        # Boss
+        boss = Boss(2800, 470, hp(35), arena_x1=ARENA_X1+20, arena_x2=ARENA_X2-20)
         enemies.append(boss)
 
-        # Goal após o boss
-        goal = LevelGoal(3650, 484)
+        goal = LevelGoal(3850, 484)
 
     return (platforms, enemies, checkpoints, orbs, goal,
             switches, gates, m_plats, world_w, world_h, level_name)
@@ -1824,7 +1798,7 @@ class Game:
         # Hazard damage
         for p in self.platforms:
             if p.is_hazard_active():
-                hr=pygame.Rect(p.rect.x,p.rect.y-12,p.rect.w,16)
+                hr=pygame.Rect(p.rect.x,p.rect.y-10,p.rect.w,16)
                 if self.player.rect.colliderect(hr):
                     self.player.take_damage(1,p.rect.centerx)
                     self.camera.add_shake(5)
@@ -1898,11 +1872,11 @@ class Game:
                 self.unlocked=max(self.unlocked,self.current_level+1)
                 self.hud.show_message(f"✦ Fase {self.current_level} Concluída! ✦",140)
             else:
-                self.hud.show_message("✦✦ JOGO CONCLUÍDO! PARABÉNS! ✦✦",300)
+                self.hud.show_message("✦✦ PARABÉNS! JOGO CONCLUÍDO! ✦✦",300)
             self.state=self.S_SELECT
 
         # Morte por queda
-        if self.player.rect.top>self.world_h+80 and not self.player.is_dead:
+        if self.player.rect.top>self.world_h and not self.player.is_dead:
             self.player._die()
         if self.player.is_dead and self.player.death_timer>60:
             self.state=self.S_DEAD
