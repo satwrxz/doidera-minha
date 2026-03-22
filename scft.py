@@ -1726,10 +1726,6 @@ def build_level(level_id=1, difficulty=1.0):
         ARENA_X1, ARENA_X2 = 1600, 3800
         platforms.append(Platform(ARENA_X1, 560, ARENA_X2 - ARENA_X1, 45, 0))
 
-        # Paredes invisíveis
-        platforms.append(Platform(ARENA_X1 - 40, 0, 40, 900))
-        platforms.append(Platform(ARENA_X2, 0, 40, 900))
-
         # Plataformas internas para manobras complexas
         platforms.append(Platform(1800, 470, 250, 22, 2))
         platforms.append(Platform(2200, 410, 250, 22, 1))
