@@ -1400,12 +1400,13 @@ class HUD:
         ft=pygame.font.SysFont("consolas",64,bold=True)
         fs=pygame.font.SysFont("consolas",19)
         t=pygame.time.get_ticks()/1000
-        gl=int(128+80*math.sin(t*1.5))
-        title=ft.render("SHADOWCROFT",True,C_UI_TITLE)
-        draw_rect_alpha(surf,C_CHK_GLOW,
-            (SCREEN_W//2-title.get_width()//2-12,SCREEN_H//2-68,
-             title.get_width()+24,72),gl//4)
-        surf.blit(title,(SCREEN_W//2-title.get_width()//2,SCREEN_H//2-62))
+        gl = int(128 + 80 * math.sin(t * 1.5))
+        ty = int(math.sin(t * 3) * 10)
+        title = ft.render("SHADOWCROFT", True, C_UI_TITLE)
+        draw_rect_alpha(surf, C_CHK_GLOW,
+            (SCREEN_W // 2 - title.get_width() // 2 - 12, SCREEN_H // 2 - 68 + ty,
+             title.get_width() + 24, 72), gl // 4)
+        surf.blit(title, (SCREEN_W // 2 - title.get_width() // 2, SCREEN_H // 2 - 62 + ty))
         sub=fs.render("Explore as sombras. Domine o combate.",True,C_UI_TEXT)
         surf.blit(sub,(SCREEN_W//2-sub.get_width()//2,SCREEN_H//2+28))
         hint=fs.render("[ CLIQUE PARA COMEÇAR ]",True,C_SOUL_A)
@@ -1768,6 +1769,7 @@ class Game:
         self.menu_clickables= []
         self.hud = HUD()
         self.bg  = self._make_bg()
+        self.entry_fade = 255
         self.load_game()
         self._init_game()
 
@@ -1826,7 +1828,8 @@ class Game:
 
     # ── Update ────────────────────────────────────────────────
     def update(self):
-        self.global_timer+=1
+        self.global_timer += 1
+        self.entry_fade = max(0, self.entry_fade - 4)
         keys=pygame.key.get_pressed()
         if self.state in (self.S_START, self.S_SELECT): return
 
@@ -1940,11 +1943,16 @@ class Game:
         cx, cy = self.camera.ix, self.camera.iy
 
         if self.state==self.S_START:
-            self.hud.draw_start_screen(screen); pygame.display.flip(); return
+            self.hud.draw_start_screen(screen)
+            self._draw_fade(screen)
+            pygame.display.flip()
+            return
         if self.state==self.S_SELECT:
             self.menu_clickables=self.hud.draw_level_select(
                 screen, self.unlocked, self.souls, self.health_upgrades)
-            pygame.display.flip(); return
+            self._draw_fade(screen)
+            pygame.display.flip()
+            return
 
         # Fundo com 2 camadas de paralaxe
         screen.blit(self.bg,(0,0))
@@ -1983,10 +1991,16 @@ class Game:
         # HUD
         self.hud.draw(screen, self.player, self.souls, self.level_name)
         # Death screen
-        if self.state==self.S_DEAD: self.hud.draw_death_screen(screen)
+        if self.state == self.S_DEAD:
+            self.hud.draw_death_screen(screen)
         # Vinheta
         self._vignette()
+        self._draw_fade(screen)
         pygame.display.flip()
+
+    def _draw_fade(self, surf):
+        if self.entry_fade > 0:
+            draw_rect_alpha(surf, C_BLACK, (0, 0, SCREEN_W, SCREEN_H), self.entry_fade)
 
     def _vignette(self):
         for i,a in [(65,85),(32,52),(16,32)]:
