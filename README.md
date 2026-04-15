@@ -24,7 +24,7 @@ pip install pygame
 
 ### 3. Rodar o jogo
 ```bash
-python shadowcroft.py
+python scft.py
 ```
 
 ---
@@ -78,7 +78,7 @@ Total de ~4500px de largura com:
 ## 🏗️ Estrutura do Código
 
 ```
-shadowcroft.py
+scft.py
 ├── Particle         — Efeitos visuais de partícula
 ├── Platform         — Plataformas sólidas do cenário
 ├── Checkpoint       — Pontos de salvamento interativos
