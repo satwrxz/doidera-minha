@@ -30,7 +30,7 @@ NOVIDADES v2:
   - Sinal de aggro "!" sobre inimigos
 """
 
-import pygame, sys, math, random
+import pygame, sys, math, random, json, os
 from typing import List, Optional
 
 pygame.init()
@@ -477,14 +477,17 @@ class Enemy:
             if self.attack_timer >= 28:
                 self.state=self.CHASE; self.attack_cd=65
 
-        # Borda de plataforma: NUNCA pula, só vira — corrige o bug de cair
-        if self.on_ground and self.state in (self.PATROL, self.CHASE):
+        # Borda de plataforma: Pula em Chase/Attack, vira em Patrol
+        if self.on_ground and self.state in (self.PATROL, self.CHASE, self.ATTACK):
             look_x = self.rect.right+2 if self.facing==1 else self.rect.left-6
             foot_rect = pygame.Rect(look_x, self.rect.bottom, 4, 4)
             on_edge = not any(p.rect.colliderect(foot_rect) for p in platforms)
             if on_edge:
-                self.facing *= -1
-                self.vx = self.patrol_spd * self.facing
+                if self.state in (self.CHASE, self.ATTACK):
+                    self.vy = 0.75 * JUMP_FORCE # Tenta pular o gap
+                else:
+                    self.facing *= -1
+                    self.vx = self.patrol_spd * self.facing
 
         self.vy = min(self.vy+GRAVITY, MAX_FALL)
         self.rect.x += int(self.vx);  self._collide_x(platforms)
@@ -1244,7 +1247,7 @@ class Camera:
 # ═══════════════════════════════════════════════════════════════════
 class Switch:
     def __init__(self,x,y):
-        self.rect=pygame.Rect(x,y,36,36); self.active=False
+        self.rect=pygame.Rect(x,y,40,40); self.active=False
     def update(self,player,particles):
         if not self.active and player.is_attacking and self.rect.colliderect(player.attack_rect):
             self.active=True
@@ -1265,7 +1268,7 @@ class Gate:
         self.rect=pygame.Rect(x,y,w,h); self.open=False; self.y_start=y
     def update(self,is_active):
         if is_active and not self.open:
-            self.rect.y-=5
+            self.rect.y-=10
             if self.rect.y<self.y_start-self.rect.h: self.open=True
     def draw(self,surf,cx,cy):
         if self.open: return
@@ -1476,7 +1479,7 @@ def build_level(level_id=1, difficulty=1.0):
 
     # ── LEVEL 1: O Início — tutorial suave ───────────────────
     if level_id == 1:
-        world_w, world_h = 3000, 760
+        world_w, world_h = 4000, 760
         level_name = "I — O Início"
         add_walls(world_w, world_h)
 
@@ -1519,11 +1522,20 @@ def build_level(level_id=1, difficulty=1.0):
         checkpoints.append(Checkpoint(2000, 424))
         orbs.append(HealthOrb(2100, 380))
 
-        goal = LevelGoal(2880, 514)
+        # Expansão
+        platforms.append(Platform(3000, 550, 200, 30, 2))
+        platforms.append(Platform(3300, 600, 250, 40, 0))
+        platforms.append(Platform(3650, 520, 180, 24, 1))
+
+        enemies.append(Enemy(3050, 510, 60, hp(4)))
+        enemies.append(Enemy(3350, 560, 80, hp(4)))
+        enemies.append(FlyingEnemy(3500, 480, hp(2), float_height=400))
+
+        goal = LevelGoal(3880, 438)
 
     # ── LEVEL 2: Plataformas — corrigido, sem espinhos duplos ─
     elif level_id == 2:
-        world_w, world_h = 3400, 760
+        world_w, world_h = 4500, 760
         level_name = "II — Plataformas"
         add_walls(world_w, world_h)
 
@@ -1572,19 +1584,29 @@ def build_level(level_id=1, difficulty=1.0):
 
         orbs.append(HealthOrb(2680, 470))
         checkpoints.append(Checkpoint(2700, 516))
-        goal = LevelGoal(3240, 504)
+
+        # Expansão
+        platforms.append(Platform(3500, 540, 200, 30, 2))
+        m_plats.append(MovingPlatform(3750, 540, 140, 22, 0, -180))
+        platforms.append(Platform(4000, 580, 400, 40, 0))
+
+        enemies.append(Enemy(3550, 500, 60, hp(4)))
+        enemies.append(ShootingEnemy(4050, 540, 80, hp(4)))
+        enemies.append(FlyingEnemy(4200, 450, hp(3), float_height=380))
+
+        goal = LevelGoal(4380, 504)
 
     # ── LEVEL 3: Puzzles — switches, portões, espinhos alternados ─
     elif level_id == 3:
-        world_w, world_h = 3600, 800
+        world_w, world_h = 4800, 800
         level_name = "III — Puzzles"
         add_walls(world_w, world_h)
 
         # Zona 1: Intro + switch
-        platforms.append(Platform(  0, 620, 600, 40, 0))
-        platforms.append(Platform(600, 560, 300, 30, 1))
-        switches.append(Switch(700, 528))
-        gates.append(Gate(650, 340, 40, 220))
+        platforms.append(Platform(  0, 620, 500, 40, 0))
+        platforms.append(Platform(500, 560, 200, 30, 1))
+        switches.append(Switch(600, 528))
+        gates.append(Gate(1100, 340, 40, 220))
 
         enemies.append(Enemy(200, 580, 80, hp(3)))
         enemies.append(Enemy(360, 580, 80, hp(3)))
@@ -1627,11 +1649,21 @@ def build_level(level_id=1, difficulty=1.0):
 
         orbs.append(HealthOrb(2700, 490))
         checkpoints.append(Checkpoint(2770, 536))
-        goal = LevelGoal(3450, 524)
+
+        # Expansão
+        platforms.append(Platform(3500, 580, 250, 40, 0))
+        platforms.append(Platform(3850, 520, 200, 30, 2))
+        platforms.append(Platform(4150, 580, 400, 40, 1))
+
+        enemies.append(Enemy(3600, 540, 80, hp(5)))
+        enemies.append(ShootingEnemy(3900, 480, 80, hp(4)))
+        enemies.append(FlyingEnemy(4300, 450, hp(3), float_height=380))
+
+        goal = LevelGoal(4680, 524)
 
     # ── LEVEL 4: A Ascensão — desafio de pulo vertical ───────
     elif level_id == 4:
-        world_w, world_h = 4000, 900
+        world_w, world_h = 5200, 900
         level_name = "IV — A Ascensão"
         add_walls(world_w, world_h)
 
@@ -1693,11 +1725,21 @@ def build_level(level_id=1, difficulty=1.0):
 
         checkpoints.append(Checkpoint(3100, 526))
         orbs.append(HealthOrb(3400, 470))
-        goal = LevelGoal(3880, 474)
+
+        # Expansão
+        platforms.append(Platform(4100, 500, 300, 35, 2))
+        platforms.append(Platform(4500, 450, 250, 24, 0))
+        platforms.append(Platform(4850, 580, 350, 40, 1))
+
+        enemies.append(Enemy(4200, 460, 80, hp(6)))
+        enemies.append(ShootingEnemy(4550, 410, 80, hp(5)))
+        enemies.append(FlyingEnemy(4700, 350, hp(4), float_height=300))
+
+        goal = LevelGoal(5080, 504)
 
     # ── LEVEL 5: O Boss Final — arena corrigida ───────────────
     else:
-        world_w, world_h = 3800, 800
+        world_w, world_h = 4000, 800
         level_name = "V — O Boss Final"
         add_walls(world_w, world_h)
 
@@ -1722,11 +1764,12 @@ def build_level(level_id=1, difficulty=1.0):
         # ── ARENA DO BOSS ─────────────────────────────────────
         # Chão sólido e extenso — garante que o boss não caia
         ARENA_X1, ARENA_X2 = 1400, 3600
-        platforms.append(Platform(ARENA_X1, 560, ARENA_X2-ARENA_X1, 45, 0))
+        platforms.append(Platform(ARENA_X1, 560, (ARENA_X2+400)-ARENA_X1, 45, 0))
 
         # Paredes invisíveis laterais da arena (impedem saída do boss)
         platforms.append(Platform(ARENA_X1-40, 0, 40, 900))   # parede esquerda arena
-        platforms.append(Platform(ARENA_X2,    0, 40, 900))   # parede direita arena
+        # Parede direita da arena removida para permitir acesso ao goal em x=3880
+        platforms.append(Platform(ARENA_X2+400, 0, 40, 900))  # Nova parede de fim de mapa
 
         # Plataformas internas para o player se esquivar
         platforms.append(Platform(1550, 470, 200, 22, 2))
@@ -1745,7 +1788,7 @@ def build_level(level_id=1, difficulty=1.0):
         enemies.append(boss)
 
         # Goal após o boss
-        goal = LevelGoal(3650, 484)
+        goal = LevelGoal(3880, 484)
 
     return (platforms, enemies, checkpoints, orbs, goal,
             switches, gates, m_plats, world_w, world_h, level_name)
@@ -1770,6 +1813,8 @@ class Game:
         self.menu_clickables= []
         self.hud = HUD()
         self.bg  = self._make_bg()
+        self.entry_fade = 255
+        self._load_data()
         self._init_game()
 
     def _init_game(self):
@@ -1803,6 +1848,7 @@ class Game:
     # ── Update ────────────────────────────────────────────────
     def update(self):
         self.global_timer+=1
+        if self.entry_fade > 0: self.entry_fade = max(0, self.entry_fade - 5)
         keys=pygame.key.get_pressed()
         if self.state in (self.S_START, self.S_SELECT): return
 
@@ -1900,6 +1946,7 @@ class Game:
             else:
                 self.hud.show_message("✦✦ JOGO CONCLUÍDO! PARABÉNS! ✦✦",300)
             self.state=self.S_SELECT
+            self._save_data()
 
         # Morte por queda
         if self.player.rect.top>self.world_h+80 and not self.player.is_dead:
@@ -1959,6 +2006,9 @@ class Game:
         self.hud.draw(screen, self.player, self.souls, self.level_name)
         # Death screen
         if self.state==self.S_DEAD: self.hud.draw_death_screen(screen)
+        # Fade entrada
+        if self.entry_fade > 0:
+            draw_rect_alpha(screen, C_BLACK, (0,0,SCREEN_W,SCREEN_H), self.entry_fade)
         # Vinheta
         self._vignette()
         pygame.display.flip()
@@ -2012,13 +2062,41 @@ class Game:
         elif action=="diff":   self._set_diff(val,{0.5:"Fácil",1.0:"Normal",1.5:"Difícil"}[val])
         elif action=="upgrade":self._buy_upgrade()
 
+    def _save_data(self):
+        data = {
+            "unlocked": self.unlocked,
+            "souls": self.souls,
+            "health_upgrades": self.health_upgrades,
+            "difficulty": self.difficulty
+        }
+        try:
+            with open("save_data.json", "w", encoding="utf-8") as f:
+                json.dump(data, f)
+        except Exception as e:
+            print(f"Erro ao salvar dados: {e}")
+
+    def _load_data(self):
+        if os.path.exists("save_data.json"):
+            try:
+                with open("save_data.json", "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    self.unlocked = data.get("unlocked", 1)
+                    self.souls = data.get("souls", 0)
+                    self.health_upgrades = data.get("health_upgrades", 0)
+                    self.difficulty = data.get("difficulty", 1.0)
+            except Exception as e:
+                print(f"Erro ao carregar dados: {e}")
+
     def _start_level(self,lv):
         self.current_level=lv; self._init_game()
         self.state=self.S_PLAY
+        self.entry_fade = 255
         self.hud.show_message(f"Fase {lv} — {self.level_name}",90)
+        self._save_data()
 
     def _set_diff(self,val,label):
         self.difficulty=val; self.hud.show_message(f"Dificuldade: {label}",70)
+        self._save_data()
 
     def _buy_upgrade(self):
         cost=30+self.health_upgrades*20
@@ -2026,6 +2104,7 @@ class Game:
             self.souls-=cost; self.health_upgrades+=1
             self.player.max_hp+=1; self.player.hp=self.player.max_hp
             self.hud.show_message(f"HP Máximo UP! ({self.player.max_hp})",90)
+            self._save_data()
         else:
             self.hud.show_message(f"Almas insuficientes! (precisa {cost})",70)
 
