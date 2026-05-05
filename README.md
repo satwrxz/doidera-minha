@@ -24,7 +24,7 @@ pip install pygame
 
 ### 3. Rodar o jogo
 ```bash
-python shadowcroft.py
+python scft.py
 ```
 
 ---
@@ -33,11 +33,12 @@ python shadowcroft.py
 
 | Tecla | Ação |
 |-------|------|
-| `←` `→` | Mover |
-| `Z` ou `Espaço` | Pular (segure para pular mais alto) |
-| `X` | Atacar |
+| `←` `→` (ou A/D) | Mover |
+| `W`, `Z` ou `Espaço` | Pular (segure para mais alto | duplo pulo no ar) |
+| `X` ou Clique M1 | Atacar (Combo de 2 golpes) |
+| `Shift` | Dash direcional (Invencível) |
 | `R` | Renascer após morte |
-| `ESC` | Sair |
+| `ESC` | Voltar ao Menu / Sair |
 
 ---
 
@@ -78,7 +79,7 @@ Total de ~4500px de largura com:
 ## 🏗️ Estrutura do Código
 
 ```
-shadowcroft.py
+scft.py
 ├── Particle         — Efeitos visuais de partícula
 ├── Platform         — Plataformas sólidas do cenário
 ├── Checkpoint       — Pontos de salvamento interativos
