@@ -24,7 +24,7 @@ pip install pygame
 
 ### 3. Rodar o jogo
 ```bash
-python shadowcroft.py
+python3 scft.py
 ```
 
 ---
@@ -33,85 +33,62 @@ python shadowcroft.py
 
 | Tecla | Ação |
 |-------|------|
-| `←` `→` | Mover |
-| `Z` ou `Espaço` | Pular (segure para pular mais alto) |
-| `X` | Atacar |
+| `A` `D` | Mover |
+| `W` `Z` ou `Espaço` | Pular / Duplo Pulo |
+| `Shift` | Dash (invencibilidade temporária) |
+| `X` ou `M1` | Atacar (combo) |
 | `R` | Renascer após morte |
-| `ESC` | Sair |
+| `ESC` | Menu de fases |
 
 ---
 
-## 🧩 Mecânicas Implementadas
+## 🧩 Mecânicas v2.0 Implementadas
 
-- ✅ Movimento lateral fluido com aceleração/desaceleração
-- ✅ Pulo responsivo com altura variável (hold para mais alto)
-- ✅ **Coyote Time** (pode pular por alguns frames após sair de plataforma)
-- ✅ **Jump Buffer** (input de pulo antecipado é registrado)
-- ✅ Gravidade e colisão com plataformas
-- ✅ Ataque corpo a corpo com hitbox e animação de slash
-- ✅ Inimigos com IA: Patrol → Chase → Attack
-- ✅ Sistema de vida (player: 5 HP, inimigos: 3–7 HP)
-- ✅ Knockback ao receber dano
-- ✅ Invencibilidade temporária após dano (pisca o sprite)
-- ✅ 3 Checkpoints com efeito visual e save de posição
-- ✅ HUD com corações animados
-- ✅ Partículas em golpes, dano, morte, poeira, etc.
-- ✅ Câmera suave seguindo o player
-- ✅ Tela de morte e reinício
+- ✅ **Persistência JSON**: Progresso, almas e upgrades salvos automaticamente.
+- ✅ **Dash Direcional**: Movimento rápido com frames de invencibilidade.
+- ✅ **Pulo Duplo**: Maior agilidade aérea.
+- ✅ **IA Aprimorada**: Inimigos saltam vãos em perseguição.
+- ✅ **Inimigos Voadores**: FlyingEnemy com comportamento de mergulho.
+- ✅ **Sistema de Almas**: Colete almas ao derrotar inimigos para comprar upgrades.
+- ✅ **Boss Multi-fase**: O Boss Final com 3 padrões de ataque distintos.
+- ✅ **Coyote Time & Jump Buffer**: Controles ultra-responsivos.
+- ✅ **Efeitos Visuais**: Fade global, parallax em 2 camadas e screen-shake.
+- ✅ **5 Níveis Expandidos**: Mapas de até 5200px com puzzles e segredos.
 
 ---
 
-## 🗺️ Mapa da Fase
+## 🗺️ Progressão
 
 ```
-[Início] → [Gap] → [Checkpoint 1] → [Escalada] → [Planalto]
-         → [Checkpoint 2] → [Caverna] → [Checkpoint 3] → [Área Final]
+Level I → Level II → Level III (Puzzles) → Level IV (Ascensão) → Level V (Boss)
 ```
 
-Total de ~4500px de largura com:
-- 18+ plataformas em alturas variadas
-- 13 inimigos posicionados estrategicamente
-- 3 checkpoints de respawn
+Total de 5 fases ricas em conteúdo e desafios variados.
 
 ---
 
 ## 🏗️ Estrutura do Código
 
 ```
-shadowcroft.py
-├── Particle         — Efeitos visuais de partícula
-├── Platform         — Plataformas sólidas do cenário
-├── Checkpoint       — Pontos de salvamento interativos
-├── Enemy            — Inimigo com máquina de estados
-│   ├── PATROL       — Patrulha entre pontos
-│   ├── CHASE        — Perseguição ao player
-│   ├── ATTACK       — Golpe corpo a corpo
-│   ├── HURT         — Knockback ao tomar dano
-│   └── DEAD         — Animação de morte
-├── Player           — Personagem principal
-│   ├── handle_input — Processa teclado
-│   ├── apply_gravity — Física vertical
-│   ├── move_and_collide — Movimento + colisões
-│   └── draw         — Renderiza sprite geométrico
-├── Camera           — Câmera suave com limites
-├── HUD              — Interface (vida, mensagens)
-├── build_level()    — Constrói o mapa da fase
-└── Game             — Loop principal e estados
+scft.py
+├── Particle         — Sistema de partículas dinâmicas
+├── SoulDrop         — Sistema de coleta e economia (Almas)
+├── Platform         — Plataformas sólidas e perigos (espinhos)
+├── Enemy variants   — Enemy (Melee), ShootingEnemy (Ranged), FlyingEnemy (Air), Boss
+├── Player           — Movimentação, Dash, Combate e Estados
+├── Camera           — Smooth follow com Screen Shake
+├── HUD              — Vida, Almas, Barra de Dash e Boss HP
+├── build_level()    — Gerador de mapas v2.0
+└── Game             — Engine principal, Estados e Persistência
 ```
 
 ---
 
-## 🔧 Expandindo o Projeto
+## 📦 Dependências
 
-Ideias para próximos passos:
-- [ ] Múltiplas fases com transições
-- [ ] Habilidade de dash
-- [ ] Inimigos voadores
-- [ ] Itens coletáveis / moeda
-- [ ] Boss com fases de comportamento
-- [ ] Sistema de upgrades
-- [ ] Sons e música (pygame.mixer)
-- [ ] Salvar progresso em arquivo JSON
+```
+pygame>=2.0.0
+```
 
 ---
 
