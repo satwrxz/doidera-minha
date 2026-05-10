@@ -1,6 +1,4 @@
-# doidera-minha
-
-# 🕹️ ShadowCroft — Protótipo 2D Platformer
+# 🕹️ ShadowCroft — Protótipo 2D Platformer v2.0
 
 Jogo 2D atmosférico inspirado em mecânicas de metroidvania, desenvolvido com **Python + Pygame**.
 
@@ -24,7 +22,7 @@ pip install pygame
 
 ### 3. Rodar o jogo
 ```bash
-python shadowcroft.py
+python3 scft.py
 ```
 
 ---
@@ -33,85 +31,50 @@ python shadowcroft.py
 
 | Tecla | Ação |
 |-------|------|
-| `←` `→` | Mover |
-| `Z` ou `Espaço` | Pular (segure para pular mais alto) |
-| `X` | Atacar |
+| `A` `D` | Mover |
+| `W`, `Z` ou `Espaço` | Pular (segure para pular mais alto | Duplo pulo no ar) |
+| `SHIFT` | Dash direcional (invencível durante o dash) |
+| `X` ou `M1` | Atacar (combo de 2 golpes) |
 | `R` | Renascer após morte |
-| `ESC` | Sair |
+| `ESC` | Menu de fases |
 
 ---
 
-## 🧩 Mecânicas Implementadas
+## 🧩 Mecânicas v2.0 Implementadas
 
 - ✅ Movimento lateral fluido com aceleração/desaceleração
-- ✅ Pulo responsivo com altura variável (hold para mais alto)
-- ✅ **Coyote Time** (pode pular por alguns frames após sair de plataforma)
-- ✅ **Jump Buffer** (input de pulo antecipado é registrado)
-- ✅ Gravidade e colisão com plataformas
-- ✅ Ataque corpo a corpo com hitbox e animação de slash
-- ✅ Inimigos com IA: Patrol → Chase → Attack
-- ✅ Sistema de vida (player: 5 HP, inimigos: 3–7 HP)
-- ✅ Knockback ao receber dano
-- ✅ Invencibilidade temporária após dano (pisca o sprite)
-- ✅ 3 Checkpoints com efeito visual e save de posição
-- ✅ HUD com corações animados
-- ✅ Partículas em golpes, dano, morte, poeira, etc.
-- ✅ Câmera suave seguindo o player
-- ✅ Tela de morte e reinício
-
----
-
-## 🗺️ Mapa da Fase
-
-```
-[Início] → [Gap] → [Checkpoint 1] → [Escalada] → [Planalto]
-         → [Checkpoint 2] → [Caverna] → [Checkpoint 3] → [Área Final]
-```
-
-Total de ~4500px de largura com:
-- 18+ plataformas em alturas variadas
-- 13 inimigos posicionados estrategicamente
-- 3 checkpoints de respawn
+- ✅ Pulo responsivo com altura variável e **Duplo Pulo**
+- ✅ **Dash Direcional** com frames de invencibilidade e rastro visual
+- ✅ **Coyote Time** e **Jump Buffer** para precisão no platforming
+- ✅ Ataque corpo a corpo com combo e feedback visual (screenshake)
+- ✅ Inimigos com IA variada: Patrulha, Atiradores e **Inimigos Voadores**
+- ✅ **Boss Final** com 3 fases de comportamento e telegraphing visual
+- ✅ Sistema de **Almas (Souls)**: Dropadas por inimigos para comprar upgrades
+- ✅ Sistema de **Persistência**: Salva progresso, almas e upgrades em `save_data.json`
+- ✅ 5 Fases expandidas com desafios crescentes e puzzles (switches/gates)
+- ✅ Checkpoints em todas as fases
+- ✅ HUD moderna com barra de dash e contador de almas
+- ✅ Efeito global de **Fade-in** ao entrar nas fases
+- ✅ Câmera suave com sistema de screenshake para impactos
 
 ---
 
 ## 🏗️ Estrutura do Código
 
 ```
-shadowcroft.py
-├── Particle         — Efeitos visuais de partícula
-├── Platform         — Plataformas sólidas do cenário
-├── Checkpoint       — Pontos de salvamento interativos
-├── Enemy            — Inimigo com máquina de estados
-│   ├── PATROL       — Patrulha entre pontos
-│   ├── CHASE        — Perseguição ao player
-│   ├── ATTACK       — Golpe corpo a corpo
-│   ├── HURT         — Knockback ao tomar dano
-│   └── DEAD         — Animação de morte
-├── Player           — Personagem principal
-│   ├── handle_input — Processa teclado
-│   ├── apply_gravity — Física vertical
-│   ├── move_and_collide — Movimento + colisões
-│   └── draw         — Renderiza sprite geométrico
-├── Camera           — Câmera suave com limites
-├── HUD              — Interface (vida, mensagens)
-├── build_level()    — Constrói o mapa da fase
-└── Game             — Loop principal e estados
+scft.py
+├── Particle         — Efeitos visuais (dust, hit, soul, etc.)
+├── SoulDrop         — Sistema de coleta de almas
+├── Platform         — Plataformas com suporte a hazards (espinhos)
+├── MovingPlatform   — Plataformas móveis sincronizadas
+├── Checkpoint       — Pontos de salvamento e respawn
+├── Enemy/Boss       — Inimigos com máquina de estados (PATROL, CHASE, ATTACK, etc.)
+├── Player           — Personagem com mecânicas avançadas (Dash, Double Jump)
+├── Camera           — Câmera com interpolação e shake
+├── HUD              — Interface dinâmica e menus
+├── build_level()    — Geração procedural/estática de 5 levels expandidos
+└── Game             — Gerenciamento de estados, persistência e loop principal
 ```
-
----
-
-## 🔧 Expandindo o Projeto
-
-Ideias para próximos passos:
-- [ ] Múltiplas fases com transições
-- [ ] Habilidade de dash
-- [ ] Inimigos voadores
-- [ ] Itens coletáveis / moeda
-- [ ] Boss com fases de comportamento
-- [ ] Sistema de upgrades
-- [ ] Sons e música (pygame.mixer)
-- [ ] Salvar progresso em arquivo JSON
 
 ---
 
@@ -120,4 +83,3 @@ Ideias para próximos passos:
 ```
 pygame>=2.0.0
 ```
-  
