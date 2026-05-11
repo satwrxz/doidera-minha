@@ -24,7 +24,7 @@ pip install pygame
 
 ### 3. Rodar o jogo
 ```bash
-python shadowcroft.py
+python3 scft.py
 ```
 
 ---
