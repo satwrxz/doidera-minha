@@ -24,7 +24,7 @@ pip install pygame
 
 ### 3. Rodar o jogo
 ```bash
-python shadowcroft.py
+python scft.py
 ```
 
 ---
@@ -33,52 +33,32 @@ python shadowcroft.py
 
 | Tecla | Ação |
 |-------|------|
-| `←` `→` | Mover |
-| `Z` ou `Espaço` | Pular (segure para pular mais alto) |
-| `X` | Atacar |
+| `←` `→` / `A` `D`| Mover |
+| `W`, `Z` ou `Espaço` | Pular (segure para pular mais alto | Duplo pulo no ar) |
+| `Shift` | Dash (invencível durante o movimento) |
+| `X` ou `M1` | Atacar (combo de 2 golpes) |
 | `R` | Renascer após morte |
-| `ESC` | Sair |
+| `ESC` | Menu de fases |
 
 ---
 
-## 🧩 Mecânicas Implementadas
+## 🧩 Mecânicas Implementadas (v2.0)
 
-- ✅ Movimento lateral fluido com aceleração/desaceleração
-- ✅ Pulo responsivo com altura variável (hold para mais alto)
-- ✅ **Coyote Time** (pode pular por alguns frames após sair de plataforma)
-- ✅ **Jump Buffer** (input de pulo antecipado é registrado)
-- ✅ Gravidade e colisão com plataformas
-- ✅ Ataque corpo a corpo com hitbox e animação de slash
-- ✅ Inimigos com IA: Patrol → Chase → Attack
-- ✅ Sistema de vida (player: 5 HP, inimigos: 3–7 HP)
-- ✅ Knockback ao receber dano
-- ✅ Invencibilidade temporária após dano (pisca o sprite)
-- ✅ 3 Checkpoints com efeito visual e save de posição
-- ✅ HUD com corações animados
-- ✅ Partículas em golpes, dano, morte, poeira, etc.
-- ✅ Câmera suave seguindo o player
-- ✅ Tela de morte e reinício
-
----
-
-## 🗺️ Mapa da Fase
-
-```
-[Início] → [Gap] → [Checkpoint 1] → [Escalada] → [Planalto]
-         → [Checkpoint 2] → [Caverna] → [Checkpoint 3] → [Área Final]
-```
-
-Total de ~4500px de largura com:
-- 18+ plataformas em alturas variadas
-- 13 inimigos posicionados estrategicamente
-- 3 checkpoints de respawn
+- ✅ **Sistema de Persistência**: Progresso salvo automaticamente (níveis, almas, upgrades).
+- ✅ **Dash Direcional**: Esquiva com frames de invencibilidade e rastro visual.
+- ✅ **Duplo Pulo**: Maior mobilidade aérea.
+- ✅ **Sistema de Almas**: Inimigos dropam almas para comprar upgrades de vida.
+- ✅ **Múltiplos Níveis**: 5 fases com designs únicos e desafios crescentes.
+- ✅ **Boss Final**: Combate épico com múltiplas fases e padrões de ataque.
+- ✅ **Fade-In Global**: Transições suaves ao iniciar as fases.
+- ✅ **Níveis Expandidos**: Mapas com até 5200px de largura e maior densidade de inimigos.
 
 ---
 
 ## 🏗️ Estrutura do Código
 
 ```
-shadowcroft.py
+scft.py
 ├── Particle         — Efeitos visuais de partícula
 ├── Platform         — Plataformas sólidas do cenário
 ├── Checkpoint       — Pontos de salvamento interativos
