@@ -1,6 +1,6 @@
 # doidera-minha
 
-# 🕹️ ShadowCroft — Protótipo 2D Platformer
+# 🕹️ ShadowCroft — Protótipo 2D Platformer v2.0
 
 Jogo 2D atmosférico inspirado em mecânicas de metroidvania, desenvolvido com **Python + Pygame**.
 
@@ -17,14 +17,9 @@ Jogo 2D atmosférico inspirado em mecânicas de metroidvania, desenvolvido com *
 pip install pygame
 ```
 
-> Se usar Python 3.10+:
-> ```bash
-> pip install pygame --upgrade
-> ```
-
 ### 3. Rodar o jogo
 ```bash
-python shadowcroft.py
+python3 scft.py
 ```
 
 ---
@@ -33,31 +28,26 @@ python shadowcroft.py
 
 | Tecla | Ação |
 |-------|------|
-| `←` `→` | Mover |
-| `Z` ou `Espaço` | Pular (segure para pular mais alto) |
-| `X` | Atacar |
+| `A` `D` | Mover |
+| `W`, `Espaço` ou `Z` | Pular (Pulo Duplo no Ar) |
+| `Shift` | Dash (Invencível) |
+| `X` ou `M1` | Atacar (Combo) |
 | `R` | Renascer após morte |
-| `ESC` | Sair |
+| `ESC` | Menu de Fases / Sair |
+| `K` | Resetar Progresso (no Menu) |
 
 ---
 
-## 🧩 Mecânicas Implementadas
+## 🧩 Mecânicas Implementadas (v2.0)
 
-- ✅ Movimento lateral fluido com aceleração/desaceleração
-- ✅ Pulo responsivo com altura variável (hold para mais alto)
-- ✅ **Coyote Time** (pode pular por alguns frames após sair de plataforma)
-- ✅ **Jump Buffer** (input de pulo antecipado é registrado)
-- ✅ Gravidade e colisão com plataformas
-- ✅ Ataque corpo a corpo com hitbox e animação de slash
-- ✅ Inimigos com IA: Patrol → Chase → Attack
-- ✅ Sistema de vida (player: 5 HP, inimigos: 3–7 HP)
-- ✅ Knockback ao receber dano
-- ✅ Invencibilidade temporária após dano (pisca o sprite)
-- ✅ 3 Checkpoints com efeito visual e save de posição
-- ✅ HUD com corações animados
-- ✅ Partículas em golpes, dano, morte, poeira, etc.
-- ✅ Câmera suave seguindo o player
-- ✅ Tela de morte e reinício
+- ✅ **Sistema de Salvamento:** Progresso, almas e upgrades persistentes em JSON.
+- ✅ **Dash Direcional:** Com frames de invencibilidade e rastro visual.
+- ✅ **Pulo Duplo:** Maior mobilidade aérea.
+- ✅ **Múltiplos Níveis:** 5 fases expandidas com novos biomas e desafios.
+- ✅ **Boss Final:** Arena complexa com boss de 3 fases e ataques variados.
+- ✅ **Upgrades:** Sistema de compra de vida extra usando almas coletadas.
+- ✅ **IA Aprimorada:** Inimigos terrestres e voadores com detecção de borda e mergulho.
+- ✅ **Efeitos Visuais:** Fade-in global, screen-shake, paralaxe em 2 camadas e vinheta.
 
 ---
 
