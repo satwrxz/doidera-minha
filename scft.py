@@ -30,7 +30,7 @@ NOVIDADES v2:
   - Sinal de aggro "!" sobre inimigos
 """
 
-import pygame, sys, math, random
+import pygame, sys, math, random, json
 from typing import List, Optional
 
 pygame.init()
@@ -38,6 +38,7 @@ pygame.init()
 # ═══════════════════════════════════════════════════════════════════
 #  TELA E CLOCK
 # ═══════════════════════════════════════════════════════════════════
+SAVE_FILE = "save_data.json"
 SCREEN_W, SCREEN_H = 1280, 720
 screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
 pygame.display.set_caption("ShadowCroft v2")
@@ -1767,12 +1768,41 @@ class Game:
         self.difficulty     = 1.0
         self.souls          = 0
         self.health_upgrades= 0
+        self.reset_timer    = 0
+        self.reset_msg_timer= 0
+        self.entry_fade     = 0
         self.menu_clickables= []
+        self._load_data()
         self.hud = HUD()
         self.bg  = self._make_bg()
         self._init_game()
 
+    def _save_data(self):
+        data = {
+            "unlocked": self.unlocked,
+            "souls": self.souls,
+            "health_upgrades": self.health_upgrades,
+            "difficulty": self.difficulty
+        }
+        try:
+            with open(SAVE_FILE, "w") as f:
+                json.dump(data, f)
+        except OSError:
+            pass
+
+    def _load_data(self):
+        try:
+            with open(SAVE_FILE, "r") as f:
+                data = json.load(f)
+                self.unlocked = data.get("unlocked", 1)
+                self.souls = data.get("souls", 0)
+                self.health_upgrades = data.get("health_upgrades", 0)
+                self.difficulty = data.get("difficulty", 1.0)
+        except (json.JSONDecodeError, OSError):
+            pass
+
     def _init_game(self):
+        self.entry_fade = 255
         result = build_level(self.current_level, self.difficulty)
         (self.platforms, self.enemies, self.checkpoints, self.orbs,
          self.goal, self.switches, self.gates, self.m_plats,
@@ -1804,6 +1834,27 @@ class Game:
     def update(self):
         self.global_timer+=1
         keys=pygame.key.get_pressed()
+
+        if self.entry_fade > 0:
+            self.entry_fade = max(0, self.entry_fade - 5)
+
+        if self.reset_msg_timer > 0:
+            self.reset_msg_timer -= 1
+
+        if self.state == self.S_SELECT:
+            if keys[pygame.K_k]:
+                self.reset_timer += 1
+                if self.reset_timer >= 120:
+                    self.unlocked = 1
+                    self.souls = 0
+                    self.health_upgrades = 0
+                    self.difficulty = 1.0
+                    self._save_data()
+                    self.reset_timer = 0
+                    self.reset_msg_timer = 180
+            else:
+                self.reset_timer = 0
+
         if self.state in (self.S_START, self.S_SELECT): return
 
         if self.state==self.S_DEAD:
@@ -1899,6 +1950,7 @@ class Game:
                 self.hud.show_message(f"✦ Fase {self.current_level} Concluída! ✦",140)
             else:
                 self.hud.show_message("✦✦ JOGO CONCLUÍDO! PARABÉNS! ✦✦",300)
+            self._save_data()
             self.state=self.S_SELECT
 
         # Morte por queda
@@ -1919,6 +1971,12 @@ class Game:
         if self.state==self.S_SELECT:
             self.menu_clickables=self.hud.draw_level_select(
                 screen, self.unlocked, self.souls, self.health_upgrades)
+            if self.reset_timer > 0:
+                txt = self.hud.font_md.render("Segure K para resetar...", True, (255, 100, 100))
+                screen.blit(txt, (SCREEN_W//2 - txt.get_width()//2, 650))
+            if self.reset_msg_timer > 0:
+                txt = self.hud.font_md.render("Progresso Resetado!", True, (100, 255, 100))
+                screen.blit(txt, (SCREEN_W//2 - txt.get_width()//2, 650))
             pygame.display.flip(); return
 
         # Fundo com 2 camadas de paralaxe
@@ -1961,6 +2019,10 @@ class Game:
         if self.state==self.S_DEAD: self.hud.draw_death_screen(screen)
         # Vinheta
         self._vignette()
+
+        if self.entry_fade > 0:
+            draw_rect_alpha(screen, (0, 0, 0), (0, 0, SCREEN_W, SCREEN_H), self.entry_fade)
+
         pygame.display.flip()
 
     def _vignette(self):
@@ -2016,9 +2078,11 @@ class Game:
         self.current_level=lv; self._init_game()
         self.state=self.S_PLAY
         self.hud.show_message(f"Fase {lv} — {self.level_name}",90)
+        self._save_data()
 
     def _set_diff(self,val,label):
         self.difficulty=val; self.hud.show_message(f"Dificuldade: {label}",70)
+        self._save_data()
 
     def _buy_upgrade(self):
         cost=30+self.health_upgrades*20
@@ -2026,6 +2090,7 @@ class Game:
             self.souls-=cost; self.health_upgrades+=1
             self.player.max_hp+=1; self.player.hp=self.player.max_hp
             self.hud.show_message(f"HP Máximo UP! ({self.player.max_hp})",90)
+            self._save_data()
         else:
             self.hud.show_message(f"Almas insuficientes! (precisa {cost})",70)
 
