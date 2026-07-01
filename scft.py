@@ -30,7 +30,7 @@ NOVIDADES v2:
   - Sinal de aggro "!" sobre inimigos
 """
 
-import pygame, sys, math, random
+import pygame, sys, math, random, json
 from typing import List, Optional
 
 pygame.init()
@@ -43,6 +43,7 @@ screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
 pygame.display.set_caption("ShadowCroft v2")
 clock = pygame.time.Clock()
 FPS = 60
+SAVE_FILE = "save_data.json"
 
 # ═══════════════════════════════════════════════════════════════════
 #  FÍSICA & GAMEPLAY
@@ -1450,6 +1451,17 @@ class HUD:
         surf.blit(hint,(SCREEN_W//2-hint.get_width()//2,630))
         return clickables
 
+    def draw_reset_ui(self, surf, reset_timer):
+        if reset_timer > 0:
+            ratio = min(1.0, reset_timer / 120)
+            bw, bh = 220, 14
+            bx, by = SCREEN_W//2-bw//2, SCREEN_H-90
+            pygame.draw.rect(surf, (40, 20, 30), (bx, by, bw, bh), border_radius=4)
+            pygame.draw.rect(surf, (255, 50, 80), (bx, by, int(bw*ratio), bh), border_radius=4)
+            pygame.draw.rect(surf, (255, 255, 255), (bx, by, bw, bh), 1, border_radius=4)
+            rt = self.font_sm.render("Segure K para resetar...", True, (255, 255, 255))
+            surf.blit(rt, (SCREEN_W//2-rt.get_width()//2, by-20))
+
 
 # ═══════════════════════════════════════════════════════════════════
 #  build_level — 5 fases completamente redesenhadas
@@ -1697,7 +1709,7 @@ def build_level(level_id=1, difficulty=1.0):
 
     # ── LEVEL 5: O Boss Final — arena corrigida ───────────────
     else:
-        world_w, world_h = 3800, 800
+        world_w, world_h = 4200, 800
         level_name = "V — O Boss Final"
         add_walls(world_w, world_h)
 
@@ -1722,11 +1734,11 @@ def build_level(level_id=1, difficulty=1.0):
         # ── ARENA DO BOSS ─────────────────────────────────────
         # Chão sólido e extenso — garante que o boss não caia
         ARENA_X1, ARENA_X2 = 1400, 3600
-        platforms.append(Platform(ARENA_X1, 560, ARENA_X2-ARENA_X1, 45, 0))
+        platforms.append(Platform(ARENA_X1, 560, 2600, 45, 0)) # Estendido até o fim
 
         # Paredes invisíveis laterais da arena (impedem saída do boss)
         platforms.append(Platform(ARENA_X1-40, 0, 40, 900))   # parede esquerda arena
-        platforms.append(Platform(ARENA_X2,    0, 40, 900))   # parede direita arena
+        gates.append(Gate(ARENA_X2, 0, 40, 900))              # PORTÃO DO BOSS (direita)
 
         # Plataformas internas para o player se esquivar
         platforms.append(Platform(1550, 470, 200, 22, 2))
@@ -1745,7 +1757,7 @@ def build_level(level_id=1, difficulty=1.0):
         enemies.append(boss)
 
         # Goal após o boss
-        goal = LevelGoal(3650, 484)
+        goal = LevelGoal(3880, 484)
 
     return (platforms, enemies, checkpoints, orbs, goal,
             switches, gates, m_plats, world_w, world_h, level_name)
@@ -1770,7 +1782,51 @@ class Game:
         self.menu_clickables= []
         self.hud = HUD()
         self.bg  = self._make_bg()
+
+        self.reset_timer     = 0
+        self.reset_msg_timer = 0
+
+        self._load_data()
         self._init_game()
+
+    def _handle_reset_logic(self, keys):
+        if self.reset_msg_timer > 0: self.reset_msg_timer -= 1
+
+        if keys[pygame.K_k]:
+            self.reset_timer += 1
+            if self.reset_timer >= 120:
+                self.unlocked = 1
+                self.souls = 0
+                self.health_upgrades = 0
+                self.difficulty = 1.0
+                self._save_data()
+                self.reset_timer = 0
+                self.reset_msg_timer = 120
+                self.hud.show_message("Progresso Resetado!", 100)
+        else:
+            self.reset_timer = 0
+
+    def _save_data(self):
+        data = {
+            "unlocked": self.unlocked,
+            "souls": self.souls,
+            "health_upgrades": self.health_upgrades,
+            "difficulty": self.difficulty
+        }
+        try:
+            with open(SAVE_FILE, "w") as f:
+                json.dump(data, f)
+        except OSError: pass
+
+    def _load_data(self):
+        try:
+            with open(SAVE_FILE, "r") as f:
+                data = json.load(f)
+                self.unlocked        = data.get("unlocked", 1)
+                self.souls           = data.get("souls", 0)
+                self.health_upgrades = data.get("health_upgrades", 0)
+                self.difficulty      = data.get("difficulty", 1.0)
+        except (OSError, json.JSONDecodeError): pass
 
     def _init_game(self):
         result = build_level(self.current_level, self.difficulty)
@@ -1783,6 +1839,7 @@ class Game:
         self.soul_drops:  List[SoulDrop]   = []
         self.camera      = Camera(self.world_w, self.world_h)
         self.global_timer= 0
+        self.entry_fade  = 255
 
         # Registra boss na HUD se existir
         boss_list = [e for e in self.enemies if isinstance(e, Boss)]
@@ -1804,7 +1861,11 @@ class Game:
     def update(self):
         self.global_timer+=1
         keys=pygame.key.get_pressed()
-        if self.state in (self.S_START, self.S_SELECT): return
+
+        if self.state==self.S_SELECT:
+            self._handle_reset_logic(keys)
+            return
+        if self.state==self.S_START: return
 
         if self.state==self.S_DEAD:
             if keys[pygame.K_r]:
@@ -1813,6 +1874,7 @@ class Game:
             return
 
         # ── Playing ───────────────────────────────────────────
+        if self.entry_fade > 0: self.entry_fade -= 5
         self.player.handle_input(keys)
         self.player.apply_gravity()
 
@@ -1837,6 +1899,12 @@ class Game:
 
         # Switches / Gates
         sw_active=any(s.active for s in self.switches)
+        # Level 5 Boss gate check
+        if self.current_level == 5 and self.hud.boss_ref:
+            dead_state = getattr(self.hud.boss_ref, 'DEAD', 'dead')
+            if self.hud.boss_ref.state == dead_state and self.hud.boss_ref.dead_timer >= 40:
+                sw_active = True
+
         for s in self.switches: s.update(self.player, self.player.particles)
         for g in self.gates:    g.update(sw_active)
 
@@ -1899,6 +1967,7 @@ class Game:
                 self.hud.show_message(f"✦ Fase {self.current_level} Concluída! ✦",140)
             else:
                 self.hud.show_message("✦✦ JOGO CONCLUÍDO! PARABÉNS! ✦✦",300)
+            self._save_data()
             self.state=self.S_SELECT
 
         # Morte por queda
@@ -1919,6 +1988,7 @@ class Game:
         if self.state==self.S_SELECT:
             self.menu_clickables=self.hud.draw_level_select(
                 screen, self.unlocked, self.souls, self.health_upgrades)
+            self.hud.draw_reset_ui(screen, self.reset_timer)
             pygame.display.flip(); return
 
         # Fundo com 2 camadas de paralaxe
@@ -1957,6 +2027,10 @@ class Game:
         self.player.draw(screen,cx,cy)
         # HUD
         self.hud.draw(screen, self.player, self.souls, self.level_name)
+
+        if self.entry_fade > 0:
+            draw_rect_alpha(screen, (0,0,0), (0,0,SCREEN_W,SCREEN_H), self.entry_fade)
+
         # Death screen
         if self.state==self.S_DEAD: self.hud.draw_death_screen(screen)
         # Vinheta
@@ -2016,9 +2090,11 @@ class Game:
         self.current_level=lv; self._init_game()
         self.state=self.S_PLAY
         self.hud.show_message(f"Fase {lv} — {self.level_name}",90)
+        self._save_data()
 
     def _set_diff(self,val,label):
         self.difficulty=val; self.hud.show_message(f"Dificuldade: {label}",70)
+        self._save_data()
 
     def _buy_upgrade(self):
         cost=30+self.health_upgrades*20
@@ -2026,6 +2102,7 @@ class Game:
             self.souls-=cost; self.health_upgrades+=1
             self.player.max_hp+=1; self.player.hp=self.player.max_hp
             self.hud.show_message(f"HP Máximo UP! ({self.player.max_hp})",90)
+            self._save_data()
         else:
             self.hud.show_message(f"Almas insuficientes! (precisa {cost})",70)
 
